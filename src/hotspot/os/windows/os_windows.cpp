@@ -455,7 +455,7 @@ void os::current_stack_base_and_size(address* stack_base, size_t* stack_size) {
   *stack_size = size;
 }
 
-bool os::committed_in_range(address start, size_t size, address& committed_start, size_t& committed_size) {
+bool os::live_in_range(address start, size_t size, address& committed_start, size_t& committed_size) {
   MEMORY_BASIC_INFORMATION minfo;
   committed_start = nullptr;
   committed_size = 0;

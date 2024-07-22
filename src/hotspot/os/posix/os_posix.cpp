@@ -149,7 +149,7 @@ void os::check_dump_limit(char* buffer, size_t bufferSize) {
   VMError::record_coredump_status(buffer, success);
 }
 
-bool os::committed_in_range(address start, size_t size, address& committed_start, size_t& committed_size) {
+bool os::live_in_range(address start, size_t size, address& committed_start, size_t& committed_size) {
 
 #ifdef _AIX
   committed_start = start;

@@ -397,7 +397,7 @@ class os: AllStatic {
  public:
   // Find committed memory region within specified range (start, start + size),
   // return true if found any
-  static bool committed_in_range(address start, size_t size, address& committed_start, size_t& committed_size);
+  static bool live_in_range(address start, size_t size, address& committed_start, size_t& committed_size);
 
   // OS interface to Virtual Memory
 
