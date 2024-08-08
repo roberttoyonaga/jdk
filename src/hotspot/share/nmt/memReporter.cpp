@@ -53,11 +53,11 @@ static ssize_t counter_diff(size_t c1, size_t c2) {
 MemReporterBase::MemReporterBase(outputStream* out, size_t scale) :
   _scale(scale), _output(out), _auto_indentor(out) {}
 
-size_t MemReporterBase::reserved_total(const MallocMemory* malloc, const VirtualMemory* vm) {
+size_t MemReporterBase::reserved_total(const MallocMemory<FlatMemoryCounter>* malloc, const VirtualMemory* vm) {
   return malloc->malloc_size() + malloc->arena_size() + vm->reserved();
 }
 
-size_t MemReporterBase::committed_total(const MallocMemory* malloc, const VirtualMemory* vm) {
+size_t MemReporterBase::committed_total(const MallocMemory<FlatMemoryCounter>* malloc, const VirtualMemory* vm) {
   return malloc->malloc_size() + malloc->arena_size() + vm->committed();
 }
 
@@ -70,7 +70,7 @@ void MemReporterBase::print_total(size_t reserved, size_t committed, size_t peak
   }
 }
 
-void MemReporterBase::print_malloc(const MemoryCounter* c, MEMFLAGS flag) const {
+void MemReporterBase::print_malloc(const FlatMemoryCounter* c, MEMFLAGS flag) const {
   const char* scale = current_scale();
   outputStream* out = output();
   const char* alloc_type = (flag == mtThreadStack) ? "" : "malloc=";
@@ -115,7 +115,7 @@ void MemReporterBase::print_virtual_memory(size_t reserved, size_t committed, si
   }
 }
 
-void MemReporterBase::print_arena(const MemoryCounter* c) const {
+void MemReporterBase::print_arena(const FlatMemoryCounter* c) const {
   const char* scale = current_scale();
   outputStream* out = output();
 
@@ -181,7 +181,7 @@ void MemSummaryReporter::report() {
     MEMFLAGS flag = NMTUtil::index_to_flag(index);
     // thread stack is reported as part of thread category
     if (flag == mtThreadStack) continue;
-    MallocMemory* malloc_memory = _malloc_snapshot->by_type(flag);
+    MallocMemory<FlatMemoryCounter>* malloc_memory = _malloc_snapshot->by_type(flag);
     VirtualMemory* virtual_memory = _vm_snapshot->by_type(flag);
 
     report_summary_of_type(flag, malloc_memory, virtual_memory);
@@ -189,7 +189,7 @@ void MemSummaryReporter::report() {
 }
 
 void MemSummaryReporter::report_summary_of_type(MEMFLAGS flag,
-  MallocMemory*  malloc_memory, VirtualMemory* virtual_memory) {
+  MallocMemory<FlatMemoryCounter>*  malloc_memory, VirtualMemory* virtual_memory) {
 
   size_t reserved_amount  = reserved_total (malloc_memory, virtual_memory);
   size_t committed_amount = committed_total(malloc_memory, virtual_memory);
@@ -595,9 +595,9 @@ void MemSummaryDiffReporter::print_virtual_memory_diff(size_t current_reserved, 
 
 
 void MemSummaryDiffReporter::diff_summary_of_type(MEMFLAGS flag,
-  const MallocMemory* early_malloc, const VirtualMemory* early_vm,
+  const MallocMemory<FlatMemoryCounter>* early_malloc, const VirtualMemory* early_vm,
   const MetaspaceCombinedStats& early_ms,
-  const MallocMemory* current_malloc, const VirtualMemory* current_vm,
+  const MallocMemory<FlatMemoryCounter>* current_malloc, const VirtualMemory* current_vm,
   const MetaspaceCombinedStats& current_ms) const {
 
   outputStream* out = output();

@@ -42,6 +42,24 @@ struct malloclimit;
  * The counters are updated atomically.
  */
 class MemoryCounter {
+public:
+    virtual void set_size_and_count(size_t size, size_t count) = 0;
+
+    virtual void allocate(size_t sz) = 0;
+
+    virtual void deallocate(size_t sz) = 0;
+
+    virtual void resize(ssize_t sz) = 0;
+
+    virtual size_t count() const = 0;
+    virtual size_t size()  const = 0;
+
+    virtual size_t peak_count() const = 0;
+
+    virtual size_t peak_size() const = 0;
+};
+
+class LiveMemoryCounter : public MemoryCounter {
  private:
   volatile size_t   _count;
   volatile size_t   _size;
@@ -53,10 +71,10 @@ class MemoryCounter {
   void update_peak(size_t size, size_t cnt);
 
  public:
-  MemoryCounter() : _count(0), _size(0), _peak_count(0), _peak_size(0) {}
+  LiveMemoryCounter() : _count(0), _size(0), _peak_count(0), _peak_size(0) {}
 
   inline void set_size_and_count(size_t size, size_t count) {
-    _size = size;
+    _size = size; // *** these are volatile
     _count = count;
     update_peak(size, count);
   }
@@ -98,15 +116,47 @@ class MemoryCounter {
   }
 };
 
+class FlatMemoryCounter : public MemoryCounter {
+private:
+    size_t   _count;
+    size_t   _size;
+
+    // Peak size and count. Note: Peak count is the count at the point
+    // peak size was reached, not the absolute highest peak count.
+    size_t _peak_count;
+    size_t _peak_size;
+
+public:
+    FlatMemoryCounter() : _count(0), _size(0), _peak_count(0), _peak_size(0) {}
+
+    // *** Still need to be able to set these
+    inline void set_size_and_count(size_t size, size_t count) {
+      _size = size;
+      _count = count;
+    }
+
+    inline void allocate(size_t sz) {}
+
+    inline void deallocate(size_t sz) {}
+
+    inline void resize(ssize_t sz) {}
+
+    inline size_t count() const { return _count; }
+    inline size_t size()  const { return _size;  }
+    inline size_t peak_count() const { return _peak_count; }
+    inline size_t peak_size() const { return _peak_size; }
+};
+
 /*
  * Malloc memory used by a particular subsystem.
  * It includes the memory acquired through os::malloc()
  * call and arena's backing memory.
  */
+template<typename CounterType>
 class MallocMemory {
  private:
-  MemoryCounter _malloc;
-  MemoryCounter _arena;
+  CounterType _malloc;
+  CounterType _arena;
 
  public:
   MallocMemory() { }
@@ -138,29 +188,29 @@ class MallocMemory {
   inline size_t arena_peak_size()  const { return _arena.peak_size(); }
   inline size_t arena_count()  const { return _arena.count(); }
 
-  const MemoryCounter* malloc_counter() const { return &_malloc; }
-  const MemoryCounter* arena_counter()  const { return &_arena;  }
+  const CounterType* malloc_counter() const { return &_malloc; }
+  const CounterType* arena_counter()  const { return &_arena;  }
 };
 
 class MallocMemorySummary;
 
 // A snapshot of malloc'd memory, includes malloc memory
 // usage by types and memory used by tracking itself.
+template<typename CounterType>
 class MallocMemorySnapshot {
   friend class MallocMemorySummary;
 
  private:
-  MallocMemory      _malloc[mt_number_of_types];
-  MemoryCounter     _all_mallocs;
-
+  MallocMemory<CounterType> _malloc[mt_number_of_types];
+  CounterType _all_mallocs;
 
  public:
-  inline MallocMemory* by_type(MEMFLAGS flags) {
+  inline MallocMemory<CounterType> *by_type(MEMFLAGS flags) {
     int index = NMTUtil::flag_to_index(flags);
     return &_malloc[index];
   }
 
-  inline const MallocMemory* by_type(MEMFLAGS flags) const {
+  inline const MallocMemory<CounterType> *by_type(MEMFLAGS flags) const {
     int index = NMTUtil::flag_to_index(flags);
     return &_malloc[index];
   }
@@ -190,13 +240,43 @@ class MallocMemorySnapshot {
   }
 
   // Total malloc'd memory used by arenas
-  size_t total_arena() const;
+  size_t total_arena() const {
+    size_t amount = 0;
+    for (int index = 0; index < mt_number_of_types; index++) {
+      amount += _malloc[index].arena_size();
+    }
+    return amount;
+  }
 
-  void copy_to(MallocMemorySnapshot* s);
+  void copy_to(MallocMemorySnapshot<FlatMemoryCounter> *s) {
+    // Use ThreadCritical to make sure that mtChunks don't get deallocated while the
+    // copy is going on, because their size is adjusted using this
+    // buffer in make_adjustment().
+    ThreadCritical tc;
+//  s->_all_mallocs = _all_mallocs;
+    size_t total_size = 0;
+    size_t total_count = 0;
+    for (int index = 0; index < mt_number_of_types; index++) {
+//    s->_malloc[index] = _malloc[index];
+      total_size += s->_malloc[index].malloc_size();
+      total_count += s->_malloc[index].malloc_count();
+    }
+    // malloc counters may be updated concurrently
+    s->_all_mallocs.set_size_and_count(total_size, total_count);
+  }
+
 
   // Make adjustment by subtracting chunks used by arenas
   // from total chunks to get total free chunk size
-  void make_adjustment();
+  void make_adjustment() {
+    size_t arena_size = total_arena();
+    int chunk_idx = NMTUtil::flag_to_index(mtChunk);
+    _malloc[chunk_idx].record_free(arena_size);
+    _all_mallocs.deallocate(arena_size);
+  }
+
+  template<typename T>
+  friend class MallocMemorySnapshot; // Friend declaration
 };
 
 /*
@@ -205,7 +285,7 @@ class MallocMemorySnapshot {
 class MallocMemorySummary : AllStatic {
  private:
   // Reserve memory for placement of MallocMemorySnapshot object
-  static MallocMemorySnapshot _snapshot;
+  static MallocMemorySnapshot<LiveMemoryCounter> _snapshot;
   static bool _have_limits;
 
   // Called when a total limit break was detected.
@@ -241,7 +321,7 @@ class MallocMemorySummary : AllStatic {
      as_snapshot()->by_type(flag)->record_arena_size_change(size);
    }
 
-   static void snapshot(MallocMemorySnapshot* s) {
+   static void snapshot(MallocMemorySnapshot<FlatMemoryCounter>* s) {
      as_snapshot()->copy_to(s);
      s->make_adjustment();
    }
@@ -251,7 +331,7 @@ class MallocMemorySummary : AllStatic {
      return as_snapshot()->malloc_overhead();
    }
 
-  static MallocMemorySnapshot* as_snapshot() {
+  static MallocMemorySnapshot<LiveMemoryCounter>* as_snapshot() {
     return &_snapshot;
   }
 

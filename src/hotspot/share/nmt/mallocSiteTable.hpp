@@ -35,8 +35,8 @@
 
 // MallocSite represents a code path that eventually calls
 // os::malloc() to allocate memory
-class MallocSite : public AllocationSite {
-  MemoryCounter _c;
+class MallocSite : public AllocationSite { //TODO this needs to be templated too since it's used in recording and reporting
+  FlatMemoryCounter _c;
  public:
   MallocSite(const NativeCallStack& stack, MEMFLAGS flags) :
     AllocationSite(stack, flags) {}
@@ -51,7 +51,7 @@ class MallocSite : public AllocationSite {
   // The number of calls were made
   size_t count() const { return _c.count(); }
 
-  const MemoryCounter* counter() const { return &_c; }
+  const FlatMemoryCounter* counter() const { return &_c; }
 };
 
 // Malloc site hashtable entry

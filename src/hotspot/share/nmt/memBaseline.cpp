@@ -138,7 +138,7 @@ class VirtualMemoryAllocationWalker : public VirtualMemoryWalker {
 };
 
 void MemBaseline::baseline_summary() {
-  MallocMemorySummary::snapshot(&_malloc_memory_snapshot);
+  MallocMemorySummary::snapshot(&_malloc_memory_snapshot); //*** looks like this is the only place snapshot() is called
   VirtualMemorySummary::snapshot(&_virtual_memory_snapshot);
   {
     MemoryFileTracker::Instance::Locker lock;

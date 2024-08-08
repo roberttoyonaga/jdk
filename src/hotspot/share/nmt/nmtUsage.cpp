@@ -54,12 +54,12 @@ void NMTUsage::update_malloc_usage() {
   // Thread critical needed keep values in sync, total area size
   // is deducted from mtChunk in the end to give correct values.
   ThreadCritical tc;
-  const MallocMemorySnapshot* ms = MallocMemorySummary::as_snapshot();
+  const MallocMemorySnapshot<LiveMemoryCounter>* ms = MallocMemorySummary::as_snapshot();
 
   size_t total_arena_size = 0;
   for (int i = 0; i < mt_number_of_types; i++) {
     MEMFLAGS flag = NMTUtil::index_to_flag(i);
-    const MallocMemory* mm = ms->by_type(flag);
+    const MallocMemory<LiveMemoryCounter>* mm = ms->by_type(flag);
     _malloc_by_type[i] = mm->malloc_size() + mm->arena_size();
     total_arena_size +=  mm->arena_size();
   }

@@ -51,8 +51,8 @@ class MemReporterBase : public StackObj {
 
   // Helper functions
   // Calculate total reserved and committed amount
-  static size_t reserved_total(const MallocMemory* malloc, const VirtualMemory* vm);
-  static size_t committed_total(const MallocMemory* malloc, const VirtualMemory* vm);
+  static size_t reserved_total(const MallocMemory<FlatMemoryCounter>* malloc, const VirtualMemory* vm);
+  static size_t committed_total(const MallocMemory<FlatMemoryCounter>* malloc, const VirtualMemory* vm);
 
  protected:
   inline outputStream* output() const {
@@ -108,9 +108,9 @@ class MemReporterBase : public StackObj {
 
   // Print summary total, malloc and virtual memory
   void print_total(size_t reserved, size_t committed, size_t peak = 0) const;
-  void print_malloc(const MemoryCounter* c, MEMFLAGS flag = mtNone) const;
+  void print_malloc(const FlatMemoryCounter* c, MEMFLAGS flag = mtNone) const;
   void print_virtual_memory(size_t reserved, size_t committed, size_t peak) const;
-  void print_arena(const MemoryCounter* c) const;
+  void print_arena(const FlatMemoryCounter* c) const;
 
   void print_virtual_memory_region(const char* type, address base, size_t size) const;
 };
@@ -120,7 +120,7 @@ class MemReporterBase : public StackObj {
  */
 class MemSummaryReporter : public MemReporterBase {
  private:
-  MallocMemorySnapshot*   _malloc_snapshot;
+  MallocMemorySnapshot<FlatMemoryCounter>*   _malloc_snapshot;
   VirtualMemorySnapshot*  _vm_snapshot;
   size_t                  _instance_class_count;
   size_t                  _array_class_count;
@@ -139,7 +139,7 @@ class MemSummaryReporter : public MemReporterBase {
   virtual void report();
  private:
   // Report summary for each memory type
-  void report_summary_of_type(MEMFLAGS type, MallocMemory* malloc_memory,
+  void report_summary_of_type(MEMFLAGS type, MallocMemory<FlatMemoryCounter>* malloc_memory,
     VirtualMemory* virtual_memory);
 
   void report_metadata(Metaspace::MetadataType type) const;
@@ -205,9 +205,9 @@ class MemSummaryDiffReporter : public MemReporterBase {
  private:
   // report the comparison of each memory type
   void diff_summary_of_type(MEMFLAGS type,
-    const MallocMemory* early_malloc, const VirtualMemory* early_vm,
+    const MallocMemory<FlatMemoryCounter>* early_malloc, const VirtualMemory* early_vm,
     const MetaspaceCombinedStats& early_ms,
-    const MallocMemory* current_malloc, const VirtualMemory* current_vm,
+    const MallocMemory<FlatMemoryCounter>* current_malloc, const VirtualMemory* current_vm,
     const MetaspaceCombinedStats& current_ms) const;
 
  protected:

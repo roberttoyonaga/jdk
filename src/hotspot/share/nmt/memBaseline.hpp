@@ -58,7 +58,7 @@ class MemBaseline {
 
  private:
   // Summary information
-  MallocMemorySnapshot   _malloc_memory_snapshot;
+  MallocMemorySnapshot<FlatMemoryCounter>   _malloc_memory_snapshot;
   VirtualMemorySnapshot  _virtual_memory_snapshot;
   MetaspaceCombinedStats _metaspace_stats;
 
@@ -93,7 +93,7 @@ class MemBaseline {
 
   BaselineType baseline_type() const { return _baseline_type; }
 
-  MallocMemorySnapshot* malloc_memory_snapshot() {
+  MallocMemorySnapshot<FlatMemoryCounter>* malloc_memory_snapshot() {
     return &_malloc_memory_snapshot;
   }
 
@@ -144,7 +144,7 @@ class MemBaseline {
     return bl->_malloc_memory_snapshot.malloc_overhead();
   }
 
-  MallocMemory* malloc_memory(MEMFLAGS flag) {
+  MallocMemory<FlatMemoryCounter>* malloc_memory(MEMFLAGS flag) {
     assert(baseline_type() != Not_baselined, "Not yet baselined");
     return _malloc_memory_snapshot.by_type(flag);
   }
