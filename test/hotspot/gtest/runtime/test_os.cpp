@@ -37,6 +37,7 @@
 #ifdef _WIN32
 #include "os_windows.hpp"
 #endif
+#include "concurrentTestRunner.inline.hpp"
 
 using testing::HasSubstr;
 
@@ -1034,3 +1035,39 @@ TEST_VM(os, free_without_uncommit) {
   os::release_memory(base, size);
 }
 #endif
+class TestNmtLockPerf : AllStatic {
+public:
+    static void test() {
+      const size_t page_sz = os::vm_page_size();
+      const size_t pages = 32;
+      const size_t size = pages * page_sz;
+      for (int i = 0; i < 2048; i++) {
+        char *base = os::reserve_memory(size, false, mtTest);
+        ASSERT_NE(base, (char *) nullptr);
+        // Commit first half
+        ASSERT_TRUE(os::commit_memory(base, pages * page_sz / 2, false));
+        // uncommit everything
+        os::uncommit_memory(base, size, false);
+        // Commit everything
+        ASSERT_TRUE(os::commit_memory(base, size, false));
+        // release everything
+        os::release_memory(base, size);
+      }
+    }
+
+};
+
+class NmtLockPerfRunnable : public TestRunnable {
+public:
+    void runUnitTest() const {
+      TestNmtLockPerf::test();
+    }
+};
+
+TEST_VM(os_nmt_test, test_NmtMutex_perf) {
+  NmtLockPerfRunnable runnable;
+  ConcurrentTestRunner testRunner(&runnable, 16, 0); // Test time is ignored
+  long start = os::javaTimeMillis();
+  testRunner.run();
+  tty->print_cr("  duration millis: %li", os::javaTimeMillis() -start);
+}

@@ -49,9 +49,7 @@ public:
   // from JavaTestThread
   void main_run() {
     long stopTime = os::javaTimeMillis() + testDuration;
-    while (os::javaTimeMillis() < stopTime) {
       runnable->runUnitTest();
-    }
   }
 private:
   TestRunnable* const runnable;
