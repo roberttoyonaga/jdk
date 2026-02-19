@@ -1220,3 +1220,196 @@ TEST_VM(os, dll_load_null_error_buf) {
   void* lib = os::dll_load("NoSuchLib", nullptr, 0);
   ASSERT_NULL(lib);
 }
+
+// --- Splittable Memory API tests ---
+
+#define SKIP_IF_SPLITTABLE_NOT_SUPPORTED() \
+  WINDOWS_ONLY(if (os::win32::VirtualAlloc2 == nullptr)  GTEST_SKIP() << "VirtualAlloc2 not available";)
+
+TEST_VM(os, splittable_reserve_and_convert) {
+  SKIP_IF_SPLITTABLE_NOT_SUPPORTED();
+
+  const size_t size = 4 * os::vm_allocation_granularity();
+
+  os::SplittableMemoryRegion region = os::reserve_splittable_memory(size, mtTest);
+  ASSERT_FALSE(region.is_empty());
+  ASSERT_EQ(region.size(), size);
+  ASSERT_NE(region.base(), (char*)nullptr);
+
+  char* reserved = os::convert_splittable_to_reserved(region);
+  ASSERT_EQ(reserved, region.base());
+
+  ASSERT_TRUE(os::commit_memory(reserved, size, false));
+  // Touch the memory to verify it's usable.
+  memset(reserved, 0xAB, size);
+  EXPECT_EQ((unsigned char)reserved[0], 0xAB);
+  EXPECT_EQ((unsigned char)reserved[size - 1], 0xAB);
+
+  ASSERT_TRUE(os::release_memory(reserved, size));
+}
+
+// TEST_VM(os, splittable_split_two_way) {
+//   SKIP_IF_SPLITTABLE_NOT_SUPPORTED();
+
+//   const size_t granule = os::vm_allocation_granularity();
+//   const size_t total = 4 * granule;
+//   const size_t split_offset = 1 * granule;
+
+//   os::SplittableMemoryRegion region = os::reserve_splittable_memory(total, mtTest);
+//   ASSERT_FALSE(region.is_empty());
+
+//   char* original_base = region.base();
+//   os::SplittableMemoryRegion trailing = os::split_memory(region, split_offset);
+
+//   // Leading piece: [base, base+split_offset)
+//   ASSERT_EQ(region.base(), original_base);
+//   ASSERT_EQ(region.size(), split_offset);
+
+//   // Trailing piece: [base+split_offset, base+total)
+//   ASSERT_EQ(trailing.base(), original_base + split_offset);
+//   ASSERT_EQ(trailing.size(), total - split_offset);
+
+//   // Convert both and commit.
+//   char* addr1 = os::convert_splittable_to_reserved(region);
+//   char* addr2 = os::convert_splittable_to_reserved(trailing);
+//   ASSERT_EQ(addr1, original_base);
+//   ASSERT_EQ(addr2, original_base + split_offset);
+
+//   ASSERT_TRUE(os::commit_memory(addr1, split_offset, false));
+//   ASSERT_TRUE(os::commit_memory(addr2, total - split_offset, false));
+
+//   memset(addr1, 0x11, split_offset);
+//   memset(addr2, 0x22, total - split_offset);
+//   EXPECT_EQ((unsigned char)addr1[0], 0x11);
+//   EXPECT_EQ((unsigned char)addr2[0], 0x22);
+
+//   ASSERT_TRUE(os::release_memory(addr1, split_offset));
+//   ASSERT_TRUE(os::release_memory(addr2, total - split_offset));
+// }
+
+// TEST_VM(os, splittable_split_three_way) {
+//   SKIP_IF_SPLITTABLE_NOT_SUPPORTED();
+
+//   const size_t granule = os::vm_allocation_granularity();
+//   const size_t sizeA = 1 * granule;
+//   const size_t sizeB = 2 * granule;
+//   const size_t sizeC = 1 * granule;
+//   const size_t total = sizeA + sizeB + sizeC;
+
+//   os::SplittableMemoryRegion region = os::reserve_splittable_memory(total, mtTest);
+//   ASSERT_FALSE(region.is_empty());
+//   char* base = region.base();
+
+//   // Split into [A] and [B+C]
+//   os::SplittableMemoryRegion bc = os::split_memory(region, sizeA);
+//   ASSERT_EQ(region.base(), base);
+//   ASSERT_EQ(region.size(), sizeA);
+//   ASSERT_EQ(bc.base(), base + sizeA);
+//   ASSERT_EQ(bc.size(), sizeB + sizeC);
+
+//   // Split [B+C] into [B] and [C]
+//   os::SplittableMemoryRegion c = os::split_memory(bc, sizeB);
+//   ASSERT_EQ(bc.base(), base + sizeA);
+//   ASSERT_EQ(bc.size(), sizeB);
+//   ASSERT_EQ(c.base(), base + sizeA + sizeB);
+//   ASSERT_EQ(c.size(), sizeC);
+
+//   // Convert all three.
+//   char* addrA = os::convert_splittable_to_reserved(region);
+//   char* addrB = os::convert_splittable_to_reserved(bc);
+//   char* addrC = os::convert_splittable_to_reserved(c);
+//   ASSERT_EQ(addrA, base);
+//   ASSERT_EQ(addrB, base + sizeA);
+//   ASSERT_EQ(addrC, base + sizeA + sizeB);
+
+//   // Commit and verify all three are independently usable.
+//   ASSERT_TRUE(os::commit_memory(addrA, sizeA, false));
+//   ASSERT_TRUE(os::commit_memory(addrB, sizeB, false));
+//   ASSERT_TRUE(os::commit_memory(addrC, sizeC, false));
+
+//   memset(addrA, 0xAA, sizeA);
+//   memset(addrB, 0xBB, sizeB);
+//   memset(addrC, 0xCC, sizeC);
+//   EXPECT_EQ((unsigned char)addrA[0], 0xAA);
+//   EXPECT_EQ((unsigned char)addrB[0], 0xBB);
+//   EXPECT_EQ((unsigned char)addrC[0], 0xCC);
+
+//   // Verify no bleed between regions.
+//   EXPECT_EQ((unsigned char)addrA[sizeA - 1], 0xAA);
+//   EXPECT_EQ((unsigned char)addrB[sizeB - 1], 0xBB);
+//   EXPECT_EQ((unsigned char)addrC[sizeC - 1], 0xCC);
+
+//   ASSERT_TRUE(os::release_memory(addrA, sizeA));
+//   ASSERT_TRUE(os::release_memory(addrB, sizeB));
+//   ASSERT_TRUE(os::release_memory(addrC, sizeC));
+// }
+
+// TEST_VM(os, splittable_split_contiguous_addresses) {
+//   SKIP_IF_SPLITTABLE_NOT_SUPPORTED();
+
+//   const size_t granule = os::vm_allocation_granularity();
+//   const size_t total = 3 * granule;
+
+//   os::SplittableMemoryRegion region = os::reserve_splittable_memory(total, mtTest);
+//   ASSERT_FALSE(region.is_empty());
+//   char* base = region.base();
+
+//   os::SplittableMemoryRegion second = os::split_memory(region, granule);
+//   os::SplittableMemoryRegion third  = os::split_memory(second, granule);
+
+//   // Check contiguity.
+//   EXPECT_EQ(region.base() + region.size(), second.base());
+//   EXPECT_EQ(second.base() + second.size(), third.base());
+//   EXPECT_EQ(region.base(), base);
+//   EXPECT_EQ(third.base() + third.size(), base + total);
+
+//   // Convert and release all pieces.
+//   char* a1 = os::convert_splittable_to_reserved(region);
+//   char* a2 = os::convert_splittable_to_reserved(second);
+//   char* a3 = os::convert_splittable_to_reserved(third);
+
+//   ASSERT_TRUE(os::release_memory(a1, granule));
+//   ASSERT_TRUE(os::release_memory(a2, granule));
+//   ASSERT_TRUE(os::release_memory(a3, granule));
+// }
+
+// --- Aligned allocation tests ---
+
+TEST_VM(os, reserve_memory_aligned_basic) {
+  // Test that reserve_memory_aligned returns properly aligned addresses.
+  // On Windows 10 1803+, this exercises the VirtualAlloc2 fast path.
+  const size_t granule = os::vm_allocation_granularity();
+
+  // Test several power-of-2 alignments.
+  const size_t alignments[] = { granule, 2 * granule, 4 * granule, 16 * granule };
+  for (size_t alignment : alignments) {
+    const size_t size = alignment; // allocate exactly one alignment unit
+    char* result = os::reserve_memory_aligned(size, alignment, mtTest);
+    ASSERT_NE(result, (char*)nullptr)
+        << "reserve_memory_aligned failed for alignment=" << alignment;
+    EXPECT_TRUE(is_aligned(result, alignment))
+        << "Result " << result << " not aligned to " << alignment;
+
+    ASSERT_TRUE(os::commit_memory(result, size, false));
+    memset(result, 0xCD, size);
+    EXPECT_EQ((unsigned char)result[0], 0xCD);
+
+    ASSERT_TRUE(os::release_memory(result, size));
+  }
+}
+
+// TEST_VM(os, reserve_memory_aligned_large) {
+//   // Larger alignment: 1 MB.
+//   const size_t alignment = 1 * M;
+//   const size_t size = alignment;
+
+//   char* result = os::reserve_memory_aligned(size, alignment, mtTest);
+//   ASSERT_NE(result, (char*)nullptr);
+//   EXPECT_TRUE(is_aligned(result, alignment));
+
+//   ASSERT_TRUE(os::commit_memory(result, size, false));
+//   memset(result, 0xEF, size);
+//   EXPECT_EQ((unsigned char)result[size - 1], 0xEF);
+
+//   ASSERT_TRUE(os::release_memory(result, size));
+// }

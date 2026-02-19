@@ -1798,6 +1798,43 @@ char* os::pd_reserve_memory(size_t bytes, bool exec) {
   }
 }
 
+os::SplittableMemoryRegion os::pd_reserve_splittable_memory(size_t bytes, bool exec) {
+  // Always round to os::vm_page_size(), which may be larger than 4K.
+  bytes = align_up(bytes, os::vm_page_size());
+  // shmated memory cannot be split after allocation, so always use mmap.
+  char* base = reserve_mmaped_memory(bytes, nullptr /* requested_addr */);
+  return SplittableMemoryRegion(base, base != nullptr ? bytes : 0);
+}
+
+os::SplittableMemoryRegion os::pd_split_memory(SplittableMemoryRegion& region, size_t offset) {
+  // On AIX, mmap regions are inherently splittable -- pure bookkeeping.
+  // pd_reserve_splittable_memory guarantees mmaped (not shmated) memory.
+  char* base = region.base();
+  size_t region_size = region.size();
+
+  assert(base != nullptr, "Region base cannot be null");
+  assert(offset > 0, "Offset must be positive");
+  assert(offset < region_size, "Offset must be less than region size");
+
+#ifdef ASSERT
+  vmembk_t* const vmi = vmembk_find(base);
+  guarantee(vmi != nullptr, "vmembk not found for splittable region at " PTR_FORMAT, p2i(base));
+  guarantee(vmi->type != VMEM_SHMATED, "Cannot split shmated memory at " PTR_FORMAT, p2i(base));
+#endif
+
+  // Shrink region to the leading piece.
+  region = SplittableMemoryRegion(base, offset);
+
+  // Return the trailing piece.
+  return SplittableMemoryRegion(base + offset, region_size - offset);
+}
+
+char* os::pd_convert_splittable_to_reserved(SplittableMemoryRegion region) {
+  // On AIX, mmap regions are already usable -- no conversion needed.
+  assert(!region.is_empty(), "Region cannot be empty");
+  return region.base();
+}
+
 bool os::pd_release_memory(char* addr, size_t size) {
 
   // Dynamically do different things for mmap/shmat.
