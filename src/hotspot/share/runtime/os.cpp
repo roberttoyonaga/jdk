@@ -1971,8 +1971,8 @@ char* os::reserve_memory(size_t bytes, MemTag mem_tag, bool executable) {
   return result;
 }
 
-os::SplittableMemoryRegion os::reserve_splittable_memory(size_t bytes, MemTag mem_tag, bool executable) {
-  SplittableMemoryRegion result = pd_reserve_splittable_memory(bytes, executable);
+os::SplittableMemoryRegion os::reserve_splittable_memory(size_t bytes, MemTag mem_tag, bool executable, char* addr) {
+  SplittableMemoryRegion result = pd_reserve_splittable_memory(bytes, executable, addr);
   if (!result.is_empty()) {
     MemTracker::record_virtual_memory_reserve(result.base(), result.size(), CALLER_PC, mem_tag);
     log_debug(os, map)("Reserved splittable memory " RANGEFMT, RANGEFMTARGS(result.base(), result.size()));
@@ -1985,32 +1985,41 @@ os::SplittableMemoryRegion os::reserve_splittable_memory(size_t bytes, MemTag me
 os::SplittableMemoryRegion os::split_memory(SplittableMemoryRegion& region, size_t offset) {
   assert(!region.is_empty(), "Region cannot be empty");
   assert(offset > 0, "Offset must be a value greater than 0");
-  assert(offset < region.size(), "Offset must be less than region size");
+  assert(offset <= region.size(), "Offset must be less than or equal to region size");
   assert(is_aligned(region.base(), os::vm_page_size()), "Region base should be page-aligned");
   assert(is_aligned(offset, os::vm_page_size()), "Offset should be page-aligned");
 
   char* original_base = region.base();
   size_t original_size = region.size();
 
-  SplittableMemoryRegion trailing = pd_split_memory(region, offset);
+  if (offset == original_size) {
+    // No split needed. Return the original region.
+    SplittableMemoryRegion result = region;
+    // The trailing piece is empty now. Nothing left.
+    region = SplittableMemoryRegion();
+    log_debug(os, map)("Split memory (consumed whole region): " RANGEFMT, RANGEFMTARGS(original_base, original_size));
+    return result;
+  }
 
-  if (trailing.is_empty()) {
-    fatal("Split memory at offset %zu failed. Region: " RANGEFMT, offset, RANGEFMTARGS(region.base(), region.size()));
+  SplittableMemoryRegion leading = pd_split_memory(region, offset);
+
+  if (leading.is_empty()) {
+    fatal("Split memory at offset %zu failed. Region: " RANGEFMT, offset, RANGEFMTARGS(original_base, original_size));
   }
   log_debug(os, map)("Split memory at offset %zu: " RANGEFMT " -> " RANGEFMT " + " RANGEFMT,
                       offset,
                       RANGEFMTARGS(original_base, original_size),
-                      RANGEFMTARGS(region.base(), region.size()),
-                      RANGEFMTARGS(trailing.base(), trailing.size()));                  
-  return trailing;
+                      RANGEFMTARGS(leading.base(), leading.size()),
+                      RANGEFMTARGS(region.base(), region.size()));
+  return leading;
 }
 
-char* os::convert_splittable_to_reserved(SplittableMemoryRegion region) {
+char* os::convert_to_reserved(SplittableMemoryRegion region) {
   assert(!region.is_empty(), "Region cannot be empty");
   assert(is_aligned(region.base(), os::vm_page_size()), "Region base should be page-aligned");
   assert(is_aligned(region.size(), os::vm_page_size()), "Region size should be page-aligned");
 
-  char* result = pd_convert_splittable_to_reserved(region);
+  char* result = pd_convert_to_reserved(region);
   if (result == nullptr) {
     fatal("Convert splittable region " RANGEFMT " to reservation failed", RANGEFMTARGS(region.base(), region.size()));
   }

@@ -128,6 +128,9 @@ class os::win32 {
   static void initialize_windows_version();
   static DWORD active_processors_in_job_object(DWORD* active_processor_groups = nullptr);
   static char* reserve_with_numa_placeholder(char* addr, size_t bytes);
+  // Replaces a placeholder with a reserved region via VirtualAlloc2(MEM_REPLACE_PLACEHOLDER).
+  // If numa_node >= 0, binds the reservation to that NUMA node.
+  static char* convert_placeholder_to_reserved(SplittableMemoryRegion region, int numa_node = -1);
 
  public:
   // Generic interface:

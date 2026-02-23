@@ -3457,26 +3457,31 @@ char* os::pd_reserve_memory(size_t bytes, bool exec) {
   return pd_attempt_reserve_memory_at(nullptr /* addr */, bytes, exec);
 }
 
-os::SplittableMemoryRegion os::pd_reserve_splittable_memory(size_t bytes, bool exec) {
+os::SplittableMemoryRegion os::pd_reserve_splittable_memory(size_t bytes, bool exec, char* addr) {
   if (!is_VirtualAlloc2_supported()) {
-    // If not supported, allow failing recoverably so the caller can try a different approach.
     return SplittableMemoryRegion();
   }
 
   char* res = (char*)os::win32::VirtualAlloc2(
     GetCurrentProcess(),
-    nullptr,
+    addr,
     bytes,
     MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
     PAGE_NOACCESS,
     nullptr, 0);
 
   if (res != nullptr) {
+    if (addr != nullptr && res != addr) {
+      // Got a different address than requested; release and fail.
+      virtualFree(res, 0, MEM_RELEASE);
+      log_info(os)("VirtualAlloc2 placeholder at requested " PTR_FORMAT " returned different address " PTR_FORMAT ", released.", p2i(addr), p2i(res));
+      return SplittableMemoryRegion();
+    }
     log_trace(os)("VirtualAlloc2 placeholder of size (%zu) returned " PTR_FORMAT ".", bytes, p2i(res));
     return SplittableMemoryRegion(res, bytes);
   } else {
     PreserveLastError ple;
-    log_info(os)("VirtualAlloc2 placeholder reservation of size (%zu) failed (%u).",  bytes, ple.v);
+    log_info(os)("VirtualAlloc2 placeholder reservation of size (%zu) at " PTR_FORMAT " failed (%u).", bytes, p2i(addr), ple.v);
     return SplittableMemoryRegion();
   }
 }
@@ -3507,15 +3512,19 @@ os::SplittableMemoryRegion os::pd_split_memory(SplittableMemoryRegion& region, s
   log_trace(os)("Split placeholder " RANGE_FORMAT " at offset %zu.",
                 RANGE_FORMAT_ARGS(base, region_size), offset);
 
-  // Shrink the input region to the leading piece.
-  region = SplittableMemoryRegion(base, offset);
+  // Shrink region to the trailing piece.
+  region = SplittableMemoryRegion(base + offset, region_size - offset);
 
-  // Return the trailing piece.
-  return SplittableMemoryRegion(base + offset, region_size - offset);
+  // Return the leading piece.
+  return SplittableMemoryRegion(base, offset);
 }
 
-char* os::pd_convert_splittable_to_reserved(SplittableMemoryRegion region) {
-  guarantee(is_VirtualAlloc2_supported(), "pd_convert_splittable_to_reserved requires VirtualAlloc2");
+char* os::pd_convert_to_reserved(SplittableMemoryRegion region) {
+  return os::win32::convert_placeholder_to_reserved(region);
+}
+
+char* os::win32::convert_placeholder_to_reserved(SplittableMemoryRegion region, int numa_node) {
+  guarantee(is_VirtualAlloc2_supported(), "convert_placeholder_to_reserved requires VirtualAlloc2");
 
   char* base = region.base();
   size_t size = region.size();
@@ -3523,20 +3532,35 @@ char* os::pd_convert_splittable_to_reserved(SplittableMemoryRegion region) {
   assert(base != nullptr, "Region base cannot be null");
   assert(size > 0, "Region size must be positive");
 
-  // Replace the placeholder with a regular reserved region.
+  MEM_EXTENDED_PARAMETER param = { 0 };
+  MEM_EXTENDED_PARAMETER* param_ptr = nullptr;
+  ULONG param_count = 0;
+
+  if (numa_node >= 0) {
+    param.Type = MemExtendedParameterNumaNode;
+    param.ULong = (DWORD)numa_node;
+    param_ptr = &param;
+    param_count = 1;
+  }
+
   char* reserved = (char*)os::win32::VirtualAlloc2(
     GetCurrentProcess(),
     base,
     size,
     MEM_RESERVE | MEM_REPLACE_PLACEHOLDER,
     PAGE_NOACCESS,
-    nullptr, 0);
+    param_ptr, param_count);
   guarantee(reserved != nullptr,
-            "Failed to convert placeholder to reservation at " PTR_FORMAT " (%zu): error %lu.",
-            p2i(base), size, GetLastError());
+            "Failed to convert placeholder to reservation at " PTR_FORMAT " (%zu, numa node %d): error %lu.",
+            p2i(base), size, numa_node, GetLastError());
 
-  log_trace(os)("Converted placeholder " RANGE_FORMAT " to private reservation.",
-                RANGE_FORMAT_ARGS(reserved, size));
+  if (numa_node >= 0) {
+    log_trace(os)("Converted placeholder " RANGE_FORMAT " to reservation on NUMA node %d.",
+                  RANGE_FORMAT_ARGS(reserved, size), numa_node);
+  } else {
+    log_trace(os)("Converted placeholder " RANGE_FORMAT " to private reservation.",
+                  RANGE_FORMAT_ARGS(reserved, size));
+  }
 
   return reserved;
 }
@@ -3549,179 +3573,31 @@ char* os::win32::reserve_with_numa_placeholder(char* addr, size_t bytes) {
 
   const size_t chunk_size = NUMAInterleaveGranularity;
 
-  // TODO: use os::reserve_splittable_memory
   // Reserve the full range as a placeholder.
-  char* const base = (char*)os::win32::VirtualAlloc2(
-    GetCurrentProcess(),
-    addr,
-    bytes,
-    MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
-    PAGE_NOACCESS,
-    nullptr,
-    0
-    );
-
-  if (base == nullptr) {
-    PreserveLastError ple;
-    log_info(os)("VirtualAlloc2 failed to reserve placeholder for NUMA interleaving (" PTR_FORMAT ", %zu) failed (%u).", p2i(addr), bytes, ple.v);
+  // If we requested an address, pd_reserve_splittable_memory will ensure it matches. 
+  SplittableMemoryRegion remaining = os::pd_reserve_splittable_memory(bytes, false, addr);
+  if (remaining.is_empty()) {
+    log_info(os)("Failed to reserve placeholder for NUMA interleaving (" PTR_FORMAT ", %zu).", p2i(addr), bytes);
     return nullptr;
   }
   
-  // If we requested an address, ensure it matches. 
-  if (addr != nullptr && base != addr) {
-    virtualFree(base, 0, MEM_RELEASE);
-    return nullptr;
-  }
+  char* const base = remaining.base();
+  log_trace(os)("Created VirtualAlloc2 NUMA placeholder at " RANGE_FORMAT " (%zu bytes).", RANGE_FORMAT_ARGS(base, bytes), bytes);
 
-  log_trace(os)("Created VirtualAlloc2 NUMA placeholder at" RANGE_FORMAT " (%zu bytes).", RANGE_FORMAT_ARGS(base, bytes), bytes);
-
-  // Divide up the placeholder among the NUMA nodes.
-  size_t bytes_remaining = bytes;
-  char* next_alloc_addr = base;
   int count = 0;
   const int node_count = numa_node_list_holder.get_count();
 
-  while (bytes_remaining > 0) {
-    size_t bytes_to_rq = MIN2(bytes_remaining, chunk_size - ((size_t)next_alloc_addr % chunk_size));
+  while (!remaining.is_empty()) {
+    size_t bytes_to_rq = MIN2(remaining.size(), chunk_size - ((size_t)remaining.base() % chunk_size));
+    SplittableMemoryRegion chunk = os::split_memory(remaining, bytes_to_rq);
 
-    // TODO: use os::split
-    // Split the front of the range at the next chunk boundary, keeping placeholder status.
-    if (bytes_to_rq < bytes_remaining) {
-      BOOL split_ok = virtualFree(next_alloc_addr, bytes_to_rq, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
-      if (split_ok == FALSE) {
-        PreserveLastError ple;
-        log_info(os)("NUMA placeholder split at " PTR_FORMAT " (%zu) failed (%u).",
-                     p2i(next_alloc_addr), bytes_to_rq, ple.v);
-        os::pd_release_memory(base, bytes);
-        return nullptr;
-      }
-    }
-
-    // Replace the leading placeholder that we just split off with a reserved region on the next NUMA node.
-    DWORD node = node_count > 0 ? numa_node_list_holder.get_node_list_entry(count % node_count) : 0; // Assign 0 for testing on UMA systems
-    MEM_EXTENDED_PARAMETER param = { 0 };
-    param.Type = MemExtendedParameterNumaNode;
-    param.ULong = node;
-
-    void* chunk = os::win32::VirtualAlloc2(
-      GetCurrentProcess(),
-      next_alloc_addr,
-      bytes_to_rq,
-      MEM_RESERVE | MEM_REPLACE_PLACEHOLDER,
-      PAGE_NOACCESS,
-      &param,
-      1
-      );
-
-    if (chunk == nullptr) {
-      PreserveLastError ple;
-      log_info(os)("VirtualAlloc2 replace placeholder for NUMA at (" PTR_FORMAT ", %zu, node %u) failed (%u).", p2i(next_alloc_addr), bytes_to_rq, node, ple.v);
-      // Release the already-replaced chunks and remaining placeholders.
-      os::pd_release_memory(base, bytes);
-      return nullptr;
-    }
-
-    log_trace(os)("Successfully reserved" RANGE_FORMAT " on NUMA node %u.", RANGE_FORMAT_ARGS(next_alloc_addr, bytes_to_rq), node);
-
-    bytes_remaining -= bytes_to_rq;
-    next_alloc_addr += bytes_to_rq;
+    DWORD node = node_count > 0 ? numa_node_list_holder.get_node_list_entry(count % node_count) : 0;  // Assign 0 for testing on UMA systems
+    convert_placeholder_to_reserved(chunk, (int)node);
     count++;
   }
 
   return base;
 }
-
-
-// // Reserve a region split across NUMA nodes. 
-// // This uses VirtualAlloc2 placeholders in order to avoid races when splitting up the initial reservation into chunks assigned to different nodes.
-// // Returns the base address of the reserved range, or nullptr on failure.
-// char* os::win32::reserve_with_numa_placeholder(char* addr, size_t bytes) {
-//   assert(is_VirtualAlloc2_supported(), "requires VirtualAlloc2");
-
-//   const size_t chunk_size = NUMAInterleaveGranularity;
-
-//   // Reserve the full range as a placeholder.
-//   char* const base = (char*)os::win32::VirtualAlloc2(
-//     GetCurrentProcess(),
-//     addr,
-//     bytes,
-//     MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
-//     PAGE_NOACCESS,
-//     nullptr,
-//     0
-//     );
-
-//   if (base == nullptr) {
-//     PreserveLastError ple;
-//     log_info(os)("VirtualAlloc2 failed to reserve placeholder for NUMA interleaving (" PTR_FORMAT ", %zu) failed (%u).", p2i(addr), bytes, ple.v);
-//     return nullptr;
-//   }
-  
-//   // If we requested an address, ensure it matches. 
-//   if (addr != nullptr && base != addr) {
-//     virtualFree(base, 0, MEM_RELEASE);
-//     return nullptr;
-//   }
-
-//   log_trace(os)("Created VirtualAlloc2 NUMA placeholder at" RANGE_FORMAT " (%zu bytes).", RANGE_FORMAT_ARGS(base, bytes), bytes);
-
-//   // Divide up the placeholder among the NUMA nodes.
-//   size_t bytes_remaining = bytes;
-//   char* next_alloc_addr = base;
-//   int count = 0;
-//   const int node_count = numa_node_list_holder.get_count();
-
-//   while (bytes_remaining > 0) {
-//     size_t bytes_to_rq = MIN2(bytes_remaining, chunk_size - ((size_t)next_alloc_addr % chunk_size));
-
-//     // Split the front of the range at the next chunk boundary, keeping placeholder status.
-//     // We use VirtualFree directly here (rather than pd_split_memory) because
-//     // pd_split_memory also converts the carved-out region to a private reservation,
-//     // whereas NUMA interleaving needs to replace each chunk with a NUMA-bound allocation.
-//     if (bytes_to_rq < bytes_remaining) {
-//       BOOL split_ok = virtualFree(next_alloc_addr, bytes_to_rq, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
-//       if (split_ok == FALSE) {
-//         PreserveLastError ple;
-//         log_info(os)("NUMA placeholder split at " PTR_FORMAT " (%zu) failed (%u).",
-//                      p2i(next_alloc_addr), bytes_to_rq, ple.v);
-//         os::pd_release_memory(base, bytes);
-//         return nullptr;
-//       }
-//     }
-
-//     // Replace the placeholder we just carved out with a private allocation on the next NUMA node.
-//     DWORD node = node_count > 0 ? numa_node_list_holder.get_node_list_entry(count % node_count) : 0; // Assign 0 for testing on UMA systems
-//     MEM_EXTENDED_PARAMETER param = { 0 };
-//     param.Type = MemExtendedParameterNumaNode;
-//     param.ULong = node;
-
-//     void* chunk = os::win32::VirtualAlloc2(
-//       GetCurrentProcess(),
-//       next_alloc_addr,
-//       bytes_to_rq,
-//       MEM_RESERVE | MEM_REPLACE_PLACEHOLDER,
-//       PAGE_NOACCESS,
-//       &param,
-//       1
-//       );
-
-//     if (chunk == nullptr) {
-//       PreserveLastError ple;
-//       log_info(os)("VirtualAlloc2 replace placeholder for NUMA at (" PTR_FORMAT ", %zu, node %u) failed (%u).", p2i(next_alloc_addr), bytes_to_rq, node, ple.v);
-//       // Release the already-replaced chunks and remaining placeholders.
-//       os::pd_release_memory(base, bytes);
-//       return nullptr;
-//     }
-
-//     log_trace(os)("Successfully reserved" RANGE_FORMAT " on NUMA node %u.", RANGE_FORMAT_ARGS(next_alloc_addr, bytes_to_rq), node);
-
-//     bytes_remaining -= bytes_to_rq;
-//     next_alloc_addr += bytes_to_rq;
-//     count++;
-//   }
-
-//   return base;
-// }
 
 // Reserve memory at an arbitrary address, only if that area is
 // available (and not reserved for something else).
