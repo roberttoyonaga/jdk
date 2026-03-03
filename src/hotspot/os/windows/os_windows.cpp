@@ -3319,7 +3319,7 @@ static char* map_or_reserve_memory_aligned(size_t size, size_t alignment, int fi
       "Size must be a multiple of allocation granularity (page size)");
 
   // VirtualAlloc2 and MapViewOfFile3 support alignment natively.
-  // This avoids the race-y retry loop below.
+  // This avoids the race prone retry loop below.
   if (is_VirtualAlloc2_supported() && is_power_of_2(alignment) &&
       alignment >= os::vm_allocation_granularity()) {
 
@@ -3474,14 +3474,14 @@ os::SplittableMemoryRegion os::pd_reserve_splittable_memory(size_t bytes, bool e
     if (addr != nullptr && res != addr) {
       // Got a different address than requested; release and fail.
       virtualFree(res, 0, MEM_RELEASE);
-      log_info(os)("VirtualAlloc2 placeholder at requested " PTR_FORMAT " returned different address " PTR_FORMAT ", released.", p2i(addr), p2i(res));
+      log_warning(os)("VirtualAlloc2 placeholder at requested " PTR_FORMAT " returned different address " PTR_FORMAT ", released.", p2i(addr), p2i(res));
       return SplittableMemoryRegion();
     }
     log_trace(os)("VirtualAlloc2 placeholder of size (%zu) returned " PTR_FORMAT ".", bytes, p2i(res));
     return SplittableMemoryRegion(res, bytes);
   } else {
     PreserveLastError ple;
-    log_info(os)("VirtualAlloc2 placeholder reservation of size (%zu) at " PTR_FORMAT " failed (%u).", bytes, p2i(addr), ple.v);
+    log_warning(os)("VirtualAlloc2 placeholder reservation of size (%zu) at " PTR_FORMAT " failed (%u).", bytes, p2i(addr), ple.v);
     return SplittableMemoryRegion();
   }
 }
@@ -3523,6 +3523,7 @@ char* os::pd_convert_to_reserved(SplittableMemoryRegion region) {
   return os::win32::convert_placeholder_to_reserved(region);
 }
 
+// This function is for convenience to help with reserve_with_numa_placeholder.
 char* os::win32::convert_placeholder_to_reserved(SplittableMemoryRegion region, int numa_node) {
   guarantee(is_VirtualAlloc2_supported(), "convert_placeholder_to_reserved requires VirtualAlloc2");
 
@@ -3555,11 +3556,9 @@ char* os::win32::convert_placeholder_to_reserved(SplittableMemoryRegion region, 
             p2i(base), size, numa_node, GetLastError());
 
   if (numa_node >= 0) {
-    log_trace(os)("Converted placeholder " RANGE_FORMAT " to reservation on NUMA node %d.",
-                  RANGE_FORMAT_ARGS(reserved, size), numa_node);
+    log_trace(os)("Converted placeholder " RANGE_FORMAT " to reservation on NUMA node %d.", RANGE_FORMAT_ARGS(reserved, size), numa_node);
   } else {
-    log_trace(os)("Converted placeholder " RANGE_FORMAT " to private reservation.",
-                  RANGE_FORMAT_ARGS(reserved, size));
+    log_trace(os)("Converted placeholder " RANGE_FORMAT " to private reservation.", RANGE_FORMAT_ARGS(reserved, size));
   }
 
   return reserved;
@@ -3574,10 +3573,10 @@ char* os::win32::reserve_with_numa_placeholder(char* addr, size_t bytes) {
   const size_t chunk_size = NUMAInterleaveGranularity;
 
   // Reserve the full range as a placeholder.
-  // If we requested an address, pd_reserve_splittable_memory will ensure it matches. 
+  // If we requested an address, pd_reserve_splittable_memory will obtain it or fail. 
   SplittableMemoryRegion remaining = os::pd_reserve_splittable_memory(bytes, false, addr);
   if (remaining.is_empty()) {
-    log_info(os)("Failed to reserve placeholder for NUMA interleaving (" PTR_FORMAT ", %zu).", p2i(addr), bytes);
+    log_warning(os)("Failed to reserve placeholder for NUMA interleaving (" PTR_FORMAT ", %zu).", p2i(addr), bytes);
     return nullptr;
   }
   
@@ -3614,7 +3613,7 @@ char* os::pd_attempt_reserve_memory_at(char* addr, size_t bytes, bool exec) {
     // Splittable NUMA interleaving with VirtualAlloc2 placeholders.
     res = win32::reserve_with_numa_placeholder(addr, bytes);
     if (res == nullptr) {
-      warning("NUMA placeholder allocation failed");
+      log_warning(os)("NUMA allocation using placeholders failed");
     }
   } else if (use_numa_interleaving) {
     // Non-splittable NUMA interleaving: allocate_pages_individually (possible races).
@@ -3622,7 +3621,7 @@ char* os::pd_attempt_reserve_memory_at(char* addr, size_t bytes, bool exec) {
     if (Verbose && PrintMiscellaneous) reserveTimer.start();
     res = allocate_pages_individually(bytes, addr, MEM_RESERVE, PAGE_READWRITE);
     if (res == nullptr) {
-      warning("NUMA page allocation failed");
+      log_warning(os)("NUMA page allocation failed");
     }
     if (Verbose && PrintMiscellaneous) {
       reserveTimer.stop();
@@ -3667,7 +3666,7 @@ char* os::pd_attempt_map_memory_to_file_at(char* requested_addr, size_t bytes, i
     BOOL freed = virtualFree(requested_addr, bytes, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
     if (freed == FALSE) {
       PreserveLastError ple;
-      log_info(os)("Failed to convert reservation to placeholder at " PTR_FORMAT " (%zu): error %u.",
+      log_warning(os)("Failed to convert reservation to placeholder at " PTR_FORMAT " (%zu): error %u.",
                     p2i(requested_addr), bytes, ple.v);
       return nullptr;
     }
@@ -3678,7 +3677,7 @@ char* os::pd_attempt_map_memory_to_file_at(char* requested_addr, size_t bytes, i
       (DWORD)(bytes >> 32), (DWORD)(bytes & 0xFFFFFFFF), nullptr);
     if (fileMapping == nullptr) {
       PreserveLastError ple;
-      log_info(os)("CreateFileMapping failed for placeholder file mapping: error %u.", ple.v);
+      log_warning(os)("CreateFileMapping failed for placeholder file mapping: error %u.", ple.v);
       return nullptr;
     }
 
@@ -3697,7 +3696,7 @@ char* os::pd_attempt_map_memory_to_file_at(char* requested_addr, size_t bytes, i
 
     if (mapped == nullptr) {
       PreserveLastError ple;
-      log_info(os)("MapViewOfFile3 MEM_REPLACE_PLACEHOLDER at " PTR_FORMAT " (%zu) failed: error %u.",
+      log_warning(os)("MapViewOfFile3 MEM_REPLACE_PLACEHOLDER at " PTR_FORMAT " (%zu) failed: error %u.",
                     p2i(requested_addr), bytes, ple.v);
     } else {
       log_trace(os)("MapViewOfFile3 MEM_REPLACE_PLACEHOLDER at " PTR_FORMAT " (%zu) succeeded.",
@@ -5684,7 +5683,7 @@ char* os::pd_map_memory(int fd, const char* file_name, size_t file_offset,
         BOOL freed = virtualFree(addr, bytes, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
         if (freed == FALSE) {
           PreserveLastError ple;
-          log_info(os)("Failed to convert reservation to placeholder at " PTR_FORMAT " (%zu): error %u.",
+          log_warning(os)("Failed to convert reservation to placeholder at " PTR_FORMAT " (%zu): error %u.",
                        p2i(addr), bytes, ple.v);
           CloseHandle(hFile);
           return nullptr;
@@ -5693,7 +5692,7 @@ char* os::pd_map_memory(int fd, const char* file_name, size_t file_offset,
         HANDLE hMap = CreateFileMapping(hFile, nullptr, PAGE_WRITECOPY, 0, 0,
                                         nullptr /* file_name */);
         if (hMap == nullptr) {
-          log_info(os)("CreateFileMapping() failed: GetLastError->%ld.", GetLastError());
+          log_warning(os)("CreateFileMapping() failed: GetLastError->%ld.", GetLastError());
           CloseHandle(hFile);
           return nullptr;
         }
@@ -5711,7 +5710,7 @@ char* os::pd_map_memory(int fd, const char* file_name, size_t file_offset,
 
         if (base == nullptr) {
           PreserveLastError ple;
-          log_info(os)("MapViewOfFile3 MEM_REPLACE_PLACEHOLDER at " PTR_FORMAT " (%zu) failed: error %u.",
+          log_warning(os)("MapViewOfFile3 MEM_REPLACE_PLACEHOLDER at " PTR_FORMAT " (%zu) failed: error %u.",
                        p2i(addr), bytes, ple.v);
         } else {
           log_trace(os)("MapViewOfFile3 MEM_REPLACE_PLACEHOLDER at " PTR_FORMAT " (%zu) succeeded.",

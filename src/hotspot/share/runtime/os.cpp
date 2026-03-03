@@ -1997,7 +1997,7 @@ os::SplittableMemoryRegion os::split_memory(SplittableMemoryRegion& region, size
     SplittableMemoryRegion result = region;
     // The trailing piece is empty now. Nothing left.
     region = SplittableMemoryRegion();
-    log_debug(os, map)("Split memory (consumed whole region): " RANGEFMT, RANGEFMTARGS(original_base, original_size));
+    log_debug(os, map)("Split memory consumed the whole region: " RANGEFMT, RANGEFMTARGS(original_base, original_size));
     return result;
   }
 
@@ -2021,9 +2021,9 @@ char* os::convert_to_reserved(SplittableMemoryRegion region) {
 
   char* result = pd_convert_to_reserved(region);
   if (result == nullptr) {
-    fatal("Convert splittable region " RANGEFMT " to reservation failed", RANGEFMTARGS(region.base(), region.size()));
+    fatal("Convert splittable region " RANGEFMT " to reserved region failed", RANGEFMTARGS(region.base(), region.size()));
   }
-  log_debug(os, map)("Converted splittable region " RANGEFMT " to reservation at " PTR_FORMAT, RANGEFMTARGS(region.base(), region.size()), p2i(result));
+  log_debug(os, map)("Converted splittable region " RANGEFMT " to reserved region at " PTR_FORMAT, RANGEFMTARGS(region.base(), region.size()), p2i(result));
   return result;
 }
 

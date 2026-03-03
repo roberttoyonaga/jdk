@@ -1240,7 +1240,7 @@ TEST_VM(os, splittable_reserve_and_convert) {
   ASSERT_EQ(reserved, region.base());
 
   ASSERT_TRUE(os::commit_memory(reserved, size, false));
-  // Touch the memory to verify it's usable.
+  // Touch the memory to confirm it's usable.
   memset(reserved, 0xAB, size);
   EXPECT_EQ((unsigned char)reserved[0], 0xAB);
   EXPECT_EQ((unsigned char)reserved[size - 1], 0xAB);
@@ -1278,7 +1278,7 @@ TEST_VM(os, splittable_split_two_way) {
   ASSERT_TRUE(os::commit_memory(addr1, split_offset, false));
   ASSERT_TRUE(os::commit_memory(addr2, total - split_offset, false));
 
-  // Touch the memory to verify it's usable.
+  // Touch the memory to confirm it's usable.
   memset(addr1, 0x11, split_offset);
   memset(addr2, 0x22, total - split_offset);
   EXPECT_EQ((unsigned char)addr1[0], 0x11);
@@ -1292,14 +1292,11 @@ TEST_VM(os, splittable_split_two_way) {
 // --- Aligned allocation tests ---
 
 TEST_VM(os, reserve_memory_aligned_basic) {
-  // Test that reserve_memory_aligned returns properly aligned addresses.
-  // On Windows 10 1803+, this exercises the VirtualAlloc2 fast path.
   const size_t granule = os::vm_allocation_granularity();
 
-  // Test several power-of-2 alignments.
   const size_t alignments[] = { granule, 2 * granule, 4 * granule, 16 * granule };
   for (size_t alignment : alignments) {
-    const size_t size = alignment; // allocate exactly one alignment unit
+    const size_t size = alignment;
     char* result = os::reserve_memory_aligned(size, alignment, mtTest);
     ASSERT_NE(result, (char*)nullptr)
         << "reserve_memory_aligned failed for alignment=" << alignment;
@@ -1314,18 +1311,17 @@ TEST_VM(os, reserve_memory_aligned_basic) {
   }
 }
 
-// TEST_VM(os, reserve_memory_aligned_large) {
-//   // Larger alignment: 1 MB.
-//   const size_t alignment = 1 * M;
-//   const size_t size = alignment;
+TEST_VM(os, reserve_memory_aligned_large) {
+  const size_t alignment = 1 * M;
+  const size_t size = alignment;
 
-//   char* result = os::reserve_memory_aligned(size, alignment, mtTest);
-//   ASSERT_NE(result, (char*)nullptr);
-//   EXPECT_TRUE(is_aligned(result, alignment));
+  char* result = os::reserve_memory_aligned(size, alignment, mtTest);
+  ASSERT_NE(result, (char*)nullptr);
+  EXPECT_TRUE(is_aligned(result, alignment));
 
-//   ASSERT_TRUE(os::commit_memory(result, size, false));
-//   memset(result, 0xEF, size);
-//   EXPECT_EQ((unsigned char)result[size - 1], 0xEF);
+  ASSERT_TRUE(os::commit_memory(result, size, false));
+  memset(result, 0xEF, size);
+  EXPECT_EQ((unsigned char)result[size - 1], 0xEF);
 
-//   ASSERT_TRUE(os::release_memory(result, size));
-// }
+  ASSERT_TRUE(os::release_memory(result, size));
+}

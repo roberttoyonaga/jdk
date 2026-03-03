@@ -1816,11 +1816,14 @@ os::SplittableMemoryRegion os::pd_split_memory(SplittableMemoryRegion& region, s
   assert(offset > 0, "Offset must be positive");
   assert(offset < region_size, "Offset must be less than region size");
 
-#ifdef ASSERT
+  // update vmembk to reflect the split
   vmembk_t* const vmi = vmembk_find(base);
   guarantee(vmi != nullptr, "vmembk not found for splittable region at " PTR_FORMAT, p2i(base));
   guarantee(vmi->type != VMEM_SHMATED, "Cannot split shmated memory at " PTR_FORMAT, p2i(base));
-#endif
+
+  vmembk_add(base, offset, vmi->pagesize, vmi->type);
+  vmi->addr = base + offset;
+  vmi->size = region_size - offset;
 
   // Shrink region to the trailing piece.
   region = SplittableMemoryRegion(base + offset, region_size - offset);

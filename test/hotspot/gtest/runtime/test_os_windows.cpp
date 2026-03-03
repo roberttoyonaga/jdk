@@ -850,7 +850,7 @@ TEST_VM(os_windows, reserve_memory_special_concurrent) {
 // is still exercised.
 TEST_VM(os_windows, numa_placeholder_reserve_commit) {
   if (!os::win32::VirtualAlloc2) {
-    GTEST_SKIP() << "VirtualAlloc2 not available (pre-Windows 10 1803)";
+    GTEST_SKIP() << "VirtualAlloc2 not available pre-Windows 10 1803";
   }
 
   const size_t num_nodes = os::numa_get_groups_num();
@@ -874,7 +874,7 @@ TEST_VM(os_windows, numa_placeholder_reserve_commit) {
   ASSERT_TRUE(is_aligned(result, os::vm_allocation_granularity()));
   ASSERT_TRUE(os::commit_memory(result, size, false));
 
-  // Walk the chunks using the same alignment logic as reserve_with_numa_placeholder:
+  // Walk (and touch) the chunks using the same alignment logic as reserve_with_numa_placeholder:
   // the first chunk may be shorter (up to the next chunk_size boundary),
   // then full chunk_size pieces, with a possible shorter trailing chunk.
   PSAPI_WORKING_SET_EX_INFORMATION wsi[num_chunks + 1]; 
@@ -884,16 +884,16 @@ TEST_VM(os_windows, numa_placeholder_reserve_commit) {
   size_t actual_chunks = 0;
 
   while (bytes_remaining > 0) {
-    size_t this_chunk = MIN2(bytes_remaining, chunk_size - ((size_t)addr % chunk_size));
+    size_t this_chunk_size = MIN2(bytes_remaining, chunk_size - ((size_t)addr % chunk_size));
 
-    memset(addr, 0xDA, this_chunk);
+    memset(addr, 0xDA, this_chunk_size);
 
     wsi[actual_chunks] = {0};
     wsi[actual_chunks].VirtualAddress = addr;
     actual_chunks++;
 
-    bytes_remaining -= this_chunk;
-    addr += this_chunk;
+    bytes_remaining -= this_chunk_size;
+    addr += this_chunk_size;
   }
 
   BOOL query_ok = QueryWorkingSetEx(GetCurrentProcess(), wsi, sizeof(wsi));
@@ -906,9 +906,7 @@ TEST_VM(os_windows, numa_placeholder_reserve_commit) {
   }
 
   if (num_nodes > 1) {
-    // On a multi-NUMA system, verify that not all chunks landed on the
-    // same node. With round-robin interleaving across multiple nodes,
-    // at least two different nodes should be represented.
+    // On a multi-NUMA system, verify that not all chunks landed on the same node.
     ULONG first_node = (ULONG)wsi[0].VirtualAttributes.Node;
     bool found_different_node = false;
     for (size_t i = 1; i < actual_chunks; i++) {
