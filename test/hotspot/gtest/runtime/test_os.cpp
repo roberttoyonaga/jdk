@@ -1231,7 +1231,7 @@ TEST_VM(os, splittable_reserve_and_convert) {
 
   const size_t size = 4 * os::vm_allocation_granularity();
 
-  os::SplittableMemoryRegion region = os::reserve_splittable_memory(size, mtTest);
+  os::PlaceholderRegion region = os::reserve_placeholder_memory(size, mtTest);
   ASSERT_FALSE(region.is_empty());
   ASSERT_EQ(region.size(), size);
   ASSERT_NE(region.base(), (char*)nullptr);
@@ -1255,11 +1255,11 @@ TEST_VM(os, splittable_split_two_way) {
   const size_t total = 4 * granule;
   const size_t split_offset = 1 * granule;
 
-  os::SplittableMemoryRegion region = os::reserve_splittable_memory(total, mtTest);
+  os::PlaceholderRegion region = os::reserve_placeholder_memory(total, mtTest);
   ASSERT_FALSE(region.is_empty());
 
   char* original_base = region.base();
-  os::SplittableMemoryRegion leading = os::split_memory(region, split_offset);
+  os::PlaceholderRegion leading = os::split_memory(region, split_offset);
 
   // Leading piece: [base, base+split_offset)
   ASSERT_EQ(leading.base(), original_base);

@@ -214,12 +214,12 @@ class os: AllStatic {
   // On Windows, this wraps a placeholder allocation (VirtualAlloc2 with
   // MEM_RESERVE_PLACEHOLDER). On POSIX platforms, any mmap'd region is
   // inherently splittable, so this is a thin wrapper.
-  class SplittableMemoryRegion {
+  class PlaceholderRegion {
     char*  _base;
     size_t _size;
   public:
-    SplittableMemoryRegion() : _base(nullptr), _size(0) {}
-    SplittableMemoryRegion(char* base, size_t size) : _base(base), _size(size) {}
+    PlaceholderRegion() : _base(nullptr), _size(0) {}
+    PlaceholderRegion(char* base, size_t size) : _base(base), _size(size) {}
     char*  base() const { return _base; }
     size_t size() const { return _size; }
     bool   is_empty() const { return _base == nullptr; }
@@ -239,18 +239,18 @@ class os: AllStatic {
   // On Windows, this allocates a placeholder via VirtualAlloc2(MEM_RESERVE_PLACEHOLDER).
   // On POSIX, this is a normal mmap(PROT_NONE) allocation (inherently splittable).
   // If addr is non-null, attempts to place the reservation at that address.
-  // If the returned SplittableMemoryRegion is empty, the reservation failed.
-  static SplittableMemoryRegion pd_reserve_splittable_memory(size_t bytes, bool executable, char* addr = nullptr);
+  // If the returned PlaceholderRegion is empty, the reservation failed.
+  static PlaceholderRegion pd_reserve_placeholder_memory(size_t bytes, bool executable, char* addr = nullptr);
 
   // On Windows, splits the placeholder with VirtualFree(MEM_PRESERVE_PLACEHOLDER).
-  // On POSIX, this just does bookkeeping (updates fields of SplittableMemoryRegion).
+  // On POSIX, this just does bookkeeping (updates fields of PlaceholderRegion).
   // Returns the leading piece [base, base+offset). Shrinks 'region' to become the
   // trailing piece [base+offset, base+original_size).
-  static SplittableMemoryRegion pd_split_memory(SplittableMemoryRegion& region, size_t offset);
+  static PlaceholderRegion pd_split_memory(PlaceholderRegion& region, size_t offset);
 
   // On Windows, replaces the placeholder via VirtualAlloc2(MEM_REPLACE_PLACEHOLDER).
   // On POSIX, this is just a no-op.
-  static char* pd_convert_to_reserved(SplittableMemoryRegion region);
+  static char* pd_convert_to_reserved(PlaceholderRegion region);
 
   static char*  pd_attempt_reserve_memory_at(char* addr, size_t bytes, bool executable);
 
@@ -551,20 +551,20 @@ class os: AllStatic {
 
   // Reserves a virtual memory region that can be split after allocation.
   // The returned region must be converted via convert_to_reserved()
-  // before committing or mapping. 
-  // This can fail recoverably if this is a Windows system that does not support VirtualAlloc2 (an empty SplittableMemoryRegion is returned).
-  // If the returned SplittableMemoryRegion is empty, the reservation failed.
+  // before committing or mapping.
+  // This can fail recoverably if this is a Windows system that does not support VirtualAlloc2 (an empty PlaceholderRegion is returned).
+  // If the returned PlaceholderRegion is empty, the reservation failed.
   // If addr is non-null, attempts to place the reservation at that address.
-  static SplittableMemoryRegion reserve_splittable_memory(size_t bytes, MemTag mem_tag, bool executable = false, char* addr = nullptr);
+  static PlaceholderRegion reserve_placeholder_memory(size_t bytes, MemTag mem_tag, bool executable = false, char* addr = nullptr);
 
   // Split 'region' at 'offset'. Returns the leading piece [base, base+offset),
   // shrinks 'region' to the trailing piece [base+offset, base+original_size).
   // If offset == region.size(), returns the entire region and sets region to empty.
-  static SplittableMemoryRegion split_memory(SplittableMemoryRegion& region, size_t offset);
+  static PlaceholderRegion split_memory(PlaceholderRegion& region, size_t offset);
 
-  // Convert a splittable region into a regular reserved region that can
+  // Convert a placeholder region into a regular reserved region that can
   // be committed, file-mapped, etc.
-  static char* convert_to_reserved(SplittableMemoryRegion region);
+  static char* convert_to_reserved(PlaceholderRegion region);
 
   // Reserves virtual memory that starts at an address that is aligned to 'alignment'.
   static char*  reserve_memory_aligned(size_t size, size_t alignment, MemTag mem_tag, bool executable = false);

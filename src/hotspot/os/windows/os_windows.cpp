@@ -3457,9 +3457,9 @@ char* os::pd_reserve_memory(size_t bytes, bool exec) {
   return pd_attempt_reserve_memory_at(nullptr /* addr */, bytes, exec);
 }
 
-os::SplittableMemoryRegion os::pd_reserve_splittable_memory(size_t bytes, bool exec, char* addr) {
+os::PlaceholderRegion os::pd_reserve_placeholder_memory(size_t bytes, bool exec, char* addr) {
   if (!is_VirtualAlloc2_supported()) {
-    return SplittableMemoryRegion();
+    return PlaceholderRegion();
   }
 
   char* res = (char*)os::win32::VirtualAlloc2(
@@ -3475,18 +3475,18 @@ os::SplittableMemoryRegion os::pd_reserve_splittable_memory(size_t bytes, bool e
       // Got a different address than requested; release and fail.
       virtualFree(res, 0, MEM_RELEASE);
       log_warning(os)("VirtualAlloc2 placeholder at requested " PTR_FORMAT " returned different address " PTR_FORMAT ", released.", p2i(addr), p2i(res));
-      return SplittableMemoryRegion();
+      return PlaceholderRegion();
     }
     log_trace(os)("VirtualAlloc2 placeholder of size (%zu) returned " PTR_FORMAT ".", bytes, p2i(res));
-    return SplittableMemoryRegion(res, bytes);
+    return PlaceholderRegion(res, bytes);
   } else {
     PreserveLastError ple;
     log_warning(os)("VirtualAlloc2 placeholder reservation of size (%zu) at " PTR_FORMAT " failed (%u).", bytes, p2i(addr), ple.v);
-    return SplittableMemoryRegion();
+    return PlaceholderRegion();
   }
 }
 
-os::SplittableMemoryRegion os::pd_split_memory(SplittableMemoryRegion& region, size_t offset) {
+os::PlaceholderRegion os::pd_split_memory(PlaceholderRegion& region, size_t offset) {
   guarantee(is_VirtualAlloc2_supported(), "pd_split_memory requires VirtualAlloc2 on Windows.");
 
   char* base = region.base();
@@ -3513,18 +3513,18 @@ os::SplittableMemoryRegion os::pd_split_memory(SplittableMemoryRegion& region, s
                 RANGE_FORMAT_ARGS(base, region_size), offset);
 
   // Shrink region to the trailing piece.
-  region = SplittableMemoryRegion(base + offset, region_size - offset);
+  region = PlaceholderRegion(base + offset, region_size - offset);
 
   // Return the leading piece.
-  return SplittableMemoryRegion(base, offset);
+  return PlaceholderRegion(base, offset);
 }
 
-char* os::pd_convert_to_reserved(SplittableMemoryRegion region) {
+char* os::pd_convert_to_reserved(PlaceholderRegion region) {
   return os::win32::convert_placeholder_to_reserved(region);
 }
 
 // This function is for convenience to help with reserve_with_numa_placeholder.
-char* os::win32::convert_placeholder_to_reserved(SplittableMemoryRegion region, int numa_node) {
+char* os::win32::convert_placeholder_to_reserved(PlaceholderRegion region, int numa_node) {
   guarantee(is_VirtualAlloc2_supported(), "convert_placeholder_to_reserved requires VirtualAlloc2");
 
   char* base = region.base();
@@ -3573,8 +3573,8 @@ char* os::win32::reserve_with_numa_placeholder(char* addr, size_t bytes) {
   const size_t chunk_size = NUMAInterleaveGranularity;
 
   // Reserve the full range as a placeholder.
-  // If we requested an address, pd_reserve_splittable_memory will obtain it or fail. 
-  SplittableMemoryRegion remaining = os::pd_reserve_splittable_memory(bytes, false, addr);
+  // If we requested an address, pd_reserve_placeholder_memory will obtain it or fail. 
+  PlaceholderRegion remaining = os::pd_reserve_placeholder_memory(bytes, false, addr);
   if (remaining.is_empty()) {
     log_warning(os)("Failed to reserve placeholder for NUMA interleaving (" PTR_FORMAT ", %zu).", p2i(addr), bytes);
     return nullptr;
@@ -3588,7 +3588,7 @@ char* os::win32::reserve_with_numa_placeholder(char* addr, size_t bytes) {
 
   while (!remaining.is_empty()) {
     size_t bytes_to_rq = MIN2(remaining.size(), chunk_size - ((size_t)remaining.base() % chunk_size));
-    SplittableMemoryRegion chunk = os::split_memory(remaining, bytes_to_rq);
+    PlaceholderRegion chunk = os::split_memory(remaining, bytes_to_rq);
 
     DWORD node = node_count > 0 ? numa_node_list_holder.get_node_list_entry(count % node_count) : 0;  // Assign 0 for testing on UMA systems
     convert_placeholder_to_reserved(chunk, (int)node);
@@ -3630,7 +3630,7 @@ char* os::pd_attempt_reserve_memory_at(char* addr, size_t bytes, bool exec) {
     }
   } else {
     // Standard reservation. Callers who need splittable placeholders should use
-    // pd_reserve_splittable_memory instead.
+    // pd_reserve_placeholder_memory instead.
     res = (char*)virtualAlloc(addr, bytes, MEM_RESERVE, PAGE_READWRITE);
   }
   assert(res == nullptr || addr == nullptr || addr == res,
@@ -3646,65 +3646,6 @@ size_t os::vm_min_address() {
 
 char* os::pd_attempt_map_memory_to_file_at(char* requested_addr, size_t bytes, int file_desc) {
   assert(file_desc >= 0, "file_desc is not valid");
-
-  if (requested_addr == nullptr || !is_VirtualAlloc2_supported() || os::win32::MapViewOfFile3 == nullptr) {
-    // Standard path: address is MEM_FREE or VirtualAlloc2/MapViewOfFile3 not available.
-    return map_memory_to_file(requested_addr, bytes, file_desc);
-  }
-
-  // Check if the target address is already reserved (e.g., a sub-region carved out
-  // from a splittable placeholder via split_memory). On Windows, you cannot
-  // MapViewOfFileEx into a reserved region, so if it is MEM_RESERVE, we assume it
-  // was produced by split_memory and convert it back to a placeholder before mapping.
-  MEMORY_BASIC_INFORMATION minfo;
-  if (VirtualQuery(requested_addr, &minfo, sizeof(minfo)) == sizeof(minfo) &&
-      minfo.State == MEM_RESERVE) {
-    log_trace(os)("pd_attempt_map_memory_to_file_at: address " PTR_FORMAT " is MEM_RESERVE, "
-                  "converting to placeholder for file mapping.", p2i(requested_addr));
-
-    // Convert the private reservation back to a placeholder.
-    BOOL freed = virtualFree(requested_addr, bytes, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
-    if (freed == FALSE) {
-      PreserveLastError ple;
-      log_warning(os)("Failed to convert reservation to placeholder at " PTR_FORMAT " (%zu): error %u.",
-                    p2i(requested_addr), bytes, ple.v);
-      return nullptr;
-    }
-
-    // Create the file mapping handle.
-    HANDLE fh = (HANDLE)_get_osfhandle(file_desc);
-    HANDLE fileMapping = CreateFileMapping(fh, nullptr, PAGE_READWRITE,
-      (DWORD)(bytes >> 32), (DWORD)(bytes & 0xFFFFFFFF), nullptr);
-    if (fileMapping == nullptr) {
-      PreserveLastError ple;
-      log_warning(os)("CreateFileMapping failed for placeholder file mapping: error %u.", ple.v);
-      return nullptr;
-    }
-
-    // Map the file into the placeholder using MapViewOfFile3 with MEM_REPLACE_PLACEHOLDER.
-    PVOID mapped = os::win32::MapViewOfFile3(
-      fileMapping,
-      GetCurrentProcess(),
-      requested_addr,
-      0,        // Offset
-      bytes,
-      MEM_REPLACE_PLACEHOLDER,
-      PAGE_READWRITE,
-      nullptr, 0);
-
-    CloseHandle(fileMapping);
-
-    if (mapped == nullptr) {
-      PreserveLastError ple;
-      log_warning(os)("MapViewOfFile3 MEM_REPLACE_PLACEHOLDER at " PTR_FORMAT " (%zu) failed: error %u.",
-                    p2i(requested_addr), bytes, ple.v);
-    } else {
-      log_trace(os)("MapViewOfFile3 MEM_REPLACE_PLACEHOLDER at " PTR_FORMAT " (%zu) succeeded.",
-                    p2i(requested_addr), bytes);
-    }
-
-    return (char*)mapped;
-  }
   return map_memory_to_file(requested_addr, bytes, file_desc);
 }
 
@@ -3929,11 +3870,13 @@ bool os::pd_uncommit_memory(char* addr, size_t bytes, bool exec) {
 }
 
 bool os::pd_release_memory(char* addr, size_t bytes) {
-  // The range may span multiple OS-level allocations (e.g. from NUMA interleaving, large page individual allocation, or VirtualAlloc2 placeholder splits).
-  // We walk the range using find_mapping and release each allocation in turn.
+  // Given a range we are to release, we require a mapping to start at the beginning of that range;
+  //  if NUMA or LP we allow the range to contain multiple mappings, which have to cover the range
+  //  completely; otherwise the range must match an OS mapping exactly.
   address start = (address)addr;
   address end = start + bytes;
   os::win32::mapping_info_t mi;
+  const bool multiple_mappings_allowed = UseLargePagesIndividualAllocation || UseNUMAInterleaving;
   address p = start;
   bool first_mapping = true;
 
@@ -3947,7 +3890,7 @@ bool os::pd_release_memory(char* addr, size_t bytes) {
         if (mi.base != start) {
           err = "base address mismatch";
         }
-        if (mi.size > bytes) {
+        if (multiple_mappings_allowed ? (mi.size > bytes) : (mi.size != bytes)) {
           err = "size mismatch";
         }
       } else {

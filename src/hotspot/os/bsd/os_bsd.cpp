@@ -1824,13 +1824,13 @@ char* os::pd_reserve_memory(size_t bytes, bool exec) {
   return anon_mmap(nullptr /* addr */, bytes, exec);
 }
 
-os::SplittableMemoryRegion os::pd_reserve_splittable_memory(size_t bytes, bool exec, char* addr) {
+os::PlaceholderRegion os::pd_reserve_placeholder_memory(size_t bytes, bool exec, char* addr) {
   // mmap returns memory that is splittable by default.
   char* base = anon_mmap(addr, bytes, exec);
-  return SplittableMemoryRegion(base, base != nullptr ? bytes : 0);
+  return PlaceholderRegion(base, base != nullptr ? bytes : 0);
 }
 
-os::SplittableMemoryRegion os::pd_split_memory(SplittableMemoryRegion& region, size_t offset) {
+os::PlaceholderRegion os::pd_split_memory(PlaceholderRegion& region, size_t offset) {
   // On BSD, mmap regions are inherently splittable. Just do bookkeeping.
   char* base = region.base();
   size_t region_size = region.size();
@@ -1840,13 +1840,13 @@ os::SplittableMemoryRegion os::pd_split_memory(SplittableMemoryRegion& region, s
   assert(offset < region_size, "Offset must be less than region size");
 
   // Shrink region to the trailing piece.
-  region = SplittableMemoryRegion(base + offset, region_size - offset);
+  region = PlaceholderRegion(base + offset, region_size - offset);
 
   // Return the leading piece.
-  return SplittableMemoryRegion(base, offset);
+  return PlaceholderRegion(base, offset);
 }
 
-char* os::pd_convert_to_reserved(SplittableMemoryRegion region) {
+char* os::pd_convert_to_reserved(PlaceholderRegion region) {
   assert(!region.is_empty(), "Region cannot be empty");
   return region.base();
 }
