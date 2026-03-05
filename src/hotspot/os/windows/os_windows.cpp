@@ -5611,62 +5611,6 @@ char* os::pd_map_memory(int fd, const char* file_name, size_t file_offset,
       return nullptr;
     }
   } else {
-    // If the target address is already reserved (e.g., a sub-region carved out from
-    // a splittable placeholder via split_memory), MapViewOfFileEx cannot map into it.
-    // Convert it back to a placeholder and use MapViewOfFile3 instead.
-    // This is safe for the old workflow because it never passes MEM_RESERVE addresses
-    // to file mapping functions -- if we see MEM_RESERVE, it came from split_memory.
-    if (addr != nullptr && is_VirtualAlloc2_supported() && os::win32::MapViewOfFile3 != nullptr) {
-      MEMORY_BASIC_INFORMATION minfo;
-      if (VirtualQuery(addr, &minfo, sizeof(minfo)) == sizeof(minfo) && minfo.State == MEM_RESERVE) {
-        log_trace(os)("pd_map_memory: address " PTR_FORMAT " is MEM_RESERVE, "
-                      "converting to placeholder for file mapping.", p2i(addr));
-
-        // Convert the private reservation back to a placeholder.
-        BOOL freed = virtualFree(addr, bytes, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
-        if (freed == FALSE) {
-          PreserveLastError ple;
-          log_warning(os)("Failed to convert reservation to placeholder at " PTR_FORMAT " (%zu): error %u.",
-                       p2i(addr), bytes, ple.v);
-          CloseHandle(hFile);
-          return nullptr;
-        }
-
-        HANDLE hMap = CreateFileMapping(hFile, nullptr, PAGE_WRITECOPY, 0, 0,
-                                        nullptr /* file_name */);
-        if (hMap == nullptr) {
-          log_warning(os)("CreateFileMapping() failed: GetLastError->%ld.", GetLastError());
-          CloseHandle(hFile);
-          return nullptr;
-        }
-
-        ULONG prot = read_only ? PAGE_READONLY : PAGE_WRITECOPY;
-        base = (char*)os::win32::MapViewOfFile3(
-          hMap,
-          GetCurrentProcess(),
-          addr,
-          (ULONG64)file_offset,
-          (SIZE_T)bytes,
-          MEM_REPLACE_PLACEHOLDER,
-          prot,
-          nullptr, 0);
-
-        if (base == nullptr) {
-          PreserveLastError ple;
-          log_warning(os)("MapViewOfFile3 MEM_REPLACE_PLACEHOLDER at " PTR_FORMAT " (%zu) failed: error %u.",
-                       p2i(addr), bytes, ple.v);
-        } else {
-          log_trace(os)("MapViewOfFile3 MEM_REPLACE_PLACEHOLDER at " PTR_FORMAT " (%zu) succeeded.",
-                        p2i(addr), bytes);
-        }
-
-        CloseHandle(hMap);
-        CloseHandle(hFile);
-        return base;
-      }
-    }
-
-    // Standard path: address is MEM_FREE or VirtualAlloc2/MapViewOfFile3 not available.
     HANDLE hMap = CreateFileMapping(hFile, nullptr, PAGE_WRITECOPY, 0, 0,
                                     nullptr /* file_name */);
     if (hMap == nullptr) {
