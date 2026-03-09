@@ -1253,7 +1253,7 @@ TEST_VM(os, splittable_split_two_way) {
 
   const size_t granule = os::vm_allocation_granularity();
   const size_t total = 4 * granule;
-  const size_t split_offset = 1 * granule;
+  const size_t split_offset = 3 * granule;
 
   os::PlaceholderRegion region = os::reserve_placeholder_memory(total, mtTest);
   ASSERT_FALSE(region.is_empty());
@@ -1293,15 +1293,13 @@ TEST_VM(os, splittable_split_two_way) {
 
 TEST_VM(os, reserve_memory_aligned_basic) {
   const size_t granule = os::vm_allocation_granularity();
-
   const size_t alignments[] = { granule, 2 * granule, 4 * granule, 16 * granule };
+
   for (size_t alignment : alignments) {
     const size_t size = alignment;
     char* result = os::reserve_memory_aligned(size, alignment, mtTest);
-    ASSERT_NE(result, (char*)nullptr)
-        << "reserve_memory_aligned failed for alignment=" << alignment;
-    EXPECT_TRUE(is_aligned(result, alignment))
-        << "Result " << result << " not aligned to " << alignment;
+    ASSERT_NE(result, (char*)nullptr) << "reserve_memory_aligned failed for alignment=" << alignment;
+    EXPECT_TRUE(is_aligned(result, alignment)) << "Result " << result << " not aligned to " << alignment;
 
     ASSERT_TRUE(os::commit_memory(result, size, false));
     memset(result, 0xCD, size);

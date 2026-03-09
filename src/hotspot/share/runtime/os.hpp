@@ -550,8 +550,7 @@ class os: AllStatic {
   static char*  reserve_memory(size_t bytes, MemTag mem_tag, bool executable = false);
 
   // Reserves a virtual memory region that can be split after allocation.
-  // The returned region must be converted via convert_to_reserved()
-  // before committing or mapping.
+  // The returned region must be converted via convert_to_reserved() before committing.
   // This can fail recoverably if this is a Windows system that does not support VirtualAlloc2 (an empty PlaceholderRegion is returned).
   // If the returned PlaceholderRegion is empty, the reservation failed.
   // If addr is non-null, attempts to place the reservation at that address.
@@ -559,6 +558,7 @@ class os: AllStatic {
 
   // Split 'region' at 'offset'. Returns the leading piece [base, base+offset),
   // shrinks 'region' to the trailing piece [base+offset, base+original_size).
+  // Offset must be page-aligned.
   // If offset == region.size(), returns the entire region and sets region to empty.
   static PlaceholderRegion split_memory(PlaceholderRegion& region, size_t offset);
 

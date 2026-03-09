@@ -3558,7 +3558,7 @@ char* os::win32::convert_placeholder_to_reserved(PlaceholderRegion region, int n
   if (numa_node >= 0) {
     log_trace(os)("Converted placeholder " RANGE_FORMAT " to reservation on NUMA node %d.", RANGE_FORMAT_ARGS(reserved, size), numa_node);
   } else {
-    log_trace(os)("Converted placeholder " RANGE_FORMAT " to private reservation.", RANGE_FORMAT_ARGS(reserved, size));
+    log_trace(os)("Converted placeholder " RANGE_FORMAT " to reservation.", RANGE_FORMAT_ARGS(reserved, size));
   }
 
   return reserved;

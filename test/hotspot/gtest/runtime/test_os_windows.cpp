@@ -901,8 +901,7 @@ TEST_VM(os_windows, numa_placeholder_reserve_commit) {
 
   // Verify all pages are valid (in the working set).
   for (size_t i = 0; i < actual_chunks; i++) {
-    EXPECT_TRUE(wsi[i].VirtualAttributes.Valid)
-        << "Chunk " << i << " page not valid in working set";
+    EXPECT_TRUE(wsi[i].VirtualAttributes.Valid) << "Chunk " << i << " page not valid in working set";
   }
 
   if (num_nodes > 1) {
