@@ -3619,6 +3619,8 @@ char* os::pd_attempt_reserve_memory_at(char* addr, size_t bytes, bool exec) {
     // Non-splittable NUMA interleaving: allocate_pages_individually (possible races).
     elapsedTimer reserveTimer;
     if (Verbose && PrintMiscellaneous) reserveTimer.start();
+    // in numa interleaving, we have to allocate pages individually
+    // (well really chunks of NUMAInterleaveGranularity size)
     res = allocate_pages_individually(bytes, addr, MEM_RESERVE, PAGE_READWRITE);
     if (res == nullptr) {
       log_warning(os)("NUMA page allocation failed");
