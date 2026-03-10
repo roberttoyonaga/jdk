@@ -1213,6 +1213,27 @@ TEST_VM(os, map_memory_to_file_aligned) {
   ::close(fd);
 }
 
+TEST_VM(os, map_memory_to_file_aligned_larger) {
+  const char* letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const size_t content_size = strlen(letters) + 1;
+  const size_t granule = os::vm_allocation_granularity();
+  const size_t alignments[] = { granule, 2 * granule, 4 * granule, 16 * granule, 1 * M };
+
+  int fd = os::open("map_memory_to_file_aligned_larger.txt", O_RDWR | O_CREAT, 0666);
+  ASSERT_GT(fd, 0);
+  ASSERT_TRUE(os::write(fd, letters, content_size));
+
+  const size_t size = granule;
+  for (size_t alignment : alignments) {
+    char* result = os::map_memory_to_file_aligned(size, alignment, fd, mtTest);
+    ASSERT_NE(result, (char*)nullptr) << "Mapping failed for alignment=" << alignment;
+    EXPECT_TRUE(is_aligned(result, alignment)) << "Failed to aligned to " << alignment;
+    EXPECT_EQ(strcmp(letters, result), 0) << "Text mismatch at alignment=" << alignment;
+    ASSERT_TRUE(os::unmap_memory(result, size));
+  }
+  ::close(fd);
+}
+
 #endif // !defined(_AIX)
 
 TEST_VM(os, dll_load_null_error_buf) {
