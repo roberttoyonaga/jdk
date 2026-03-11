@@ -1801,9 +1801,13 @@ char* os::pd_reserve_memory(size_t bytes, bool exec) {
 os::PlaceholderRegion os::pd_reserve_placeholder_memory(size_t bytes, bool exec, char* addr) {
   // Always round to os::vm_page_size(), which may be larger than 4K.
   bytes = align_up(bytes, os::vm_page_size());
-  // shmated memory cannot be split after allocation, so always use mmap.
-  char* base = reserve_mmaped_memory(bytes, addr);
-  return PlaceholderRegion(base, base != nullptr ? bytes : 0);
+
+  // shmated memory cannot be split after allocation
+  if (os::vm_page_size() == 4*K || g_multipage_support.can_use_64K_mmap_pages) {
+    char* base = reserve_mmaped_memory(bytes, addr);
+    return PlaceholderRegion(base, base != nullptr ? bytes : 0);
+  }
+  return PlaceholderRegion();
 }
 
 os::PlaceholderRegion os::pd_split_memory(PlaceholderRegion& region, size_t offset) {

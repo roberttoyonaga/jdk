@@ -112,12 +112,12 @@ class os::win32 {
   // Resolve a symbol from KernelBase.dll, returns nullptr if not found.
   static void* lookup_kernelbase_symbol(const char* name);
 
-  // VirtualAlloc2 (since Windows 10 1803)
+  // VirtualAlloc2 (since Windows version 1803)
   // Resolved from KernelBase during os::init_2() or nullptr if unavailable.
   typedef PVOID (WINAPI *VirtualAlloc2Fn)(HANDLE, PVOID, SIZE_T, ULONG, ULONG, MEM_EXTENDED_PARAMETER*, ULONG);
   static VirtualAlloc2Fn VirtualAlloc2;
 
-  // MapViewOfFile3 (since Windows 10 1803)
+  // MapViewOfFile3 (since Windows version 1803)
   // Resolved from KernelBase during os::init_2() or nullptr if unavailable.
   typedef PVOID (WINAPI *MapViewOfFile3Fn)(HANDLE, HANDLE, PVOID, ULONG64, SIZE_T, ULONG, ULONG, MEM_EXTENDED_PARAMETER*, ULONG);
   static MapViewOfFile3Fn MapViewOfFile3;

@@ -850,7 +850,7 @@ TEST_VM(os_windows, reserve_memory_special_concurrent) {
 // is still exercised.
 TEST_VM(os_windows, numa_placeholder_reserve_commit) {
   if (!os::win32::VirtualAlloc2) {
-    GTEST_SKIP() << "VirtualAlloc2 not available pre-Windows 10 1803";
+    GTEST_SKIP() << "VirtualAlloc2 not available pre-Windows version 1803";
   }
 
   const size_t num_nodes = os::numa_get_groups_num();

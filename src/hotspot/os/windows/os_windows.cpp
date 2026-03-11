@@ -243,10 +243,10 @@ static LPVOID virtualAllocExNuma(HANDLE hProcess, LPVOID lpAddress, SIZE_T dwSiz
   return result;
 }
 
-// VirtualAlloc2 (since Windows 10 1803). loaded from KernelBase in os::init_2()
+// VirtualAlloc2 (since Windows version 1803). loaded from KernelBase in os::init_2()
 os::win32::VirtualAlloc2Fn os::win32::VirtualAlloc2 = nullptr;
 
-// MapViewOfFile3 (since Windows 10 1803). loaded from KernelBase in os::init_2()
+// MapViewOfFile3 (since Windows version 1803). loaded from KernelBase in os::init_2()
 os::win32::MapViewOfFile3Fn os::win32::MapViewOfFile3 = nullptr;
 
 static void* lookup_kernelbase_library() {
@@ -4833,7 +4833,7 @@ jint os::init_2(void) {
   }
   log_info(os, thread)("The SetThreadDescription API is%s available.", _SetThreadDescription == nullptr ? " not" : "");
 
-  // Prepare KernelBase APIs (VirtualAlloc2, MapViewOfFile3) if available (Windows 10 1803+).
+  // Prepare KernelBase APIs (VirtualAlloc2, MapViewOfFile3) if available (Windows version 1803).
   initialize_kernelbase_apis();
 
   return JNI_OK;
