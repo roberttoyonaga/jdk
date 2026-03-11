@@ -1219,7 +1219,7 @@ TEST_VM(os, map_memory_to_file_aligned_larger) {
   const size_t granularity = os::vm_allocation_granularity();
   const size_t alignments[] = { granularity, 2 * granularity, 4 * granularity, 16 * granularity, 1 * M };
 
-  int fd = os::open("map_memory_to_file_aligned_larger.txt", O_RDWR | O_CREAT, 0666);
+  int fd = os::open("map_memory_to_file.txt", O_RDWR | O_CREAT, 0666);
   EXPECT_TRUE(fd > 0);
   ASSERT_TRUE(os::write(fd, letters, content_size));
 
