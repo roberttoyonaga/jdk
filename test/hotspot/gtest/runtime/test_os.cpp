@@ -1216,17 +1216,17 @@ TEST_VM(os, map_memory_to_file_aligned) {
 TEST_VM(os, map_memory_to_file_aligned_larger) {
   const char* letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const size_t content_size = strlen(letters) + 1;
-  const size_t granule = os::vm_allocation_granularity();
-  const size_t alignments[] = { granule, 2 * granule, 4 * granule, 16 * granule, 1 * M };
+  const size_t granularity = os::vm_allocation_granularity();
+  const size_t alignments[] = { granularity, 2 * granularity, 4 * granularity, 16 * granularity, 1 * M };
 
   int fd = os::open("map_memory_to_file_aligned_larger.txt", O_RDWR | O_CREAT, 0666);
-  ASSERT_GT(fd, 0);
+  EXPECT_TRUE(fd > 0);
   ASSERT_TRUE(os::write(fd, letters, content_size));
 
-  const size_t size = granule;
+  const size_t size = granularity;
   for (size_t alignment : alignments) {
     char* result = os::map_memory_to_file_aligned(size, alignment, fd, mtTest);
-    ASSERT_NE(result, (char*)nullptr) << "Mapping failed for alignment=" << alignment;
+    ASSERT_NOT_NULL(result) << "Mapping failed for alignment=" << alignment;
     EXPECT_TRUE(is_aligned(result, alignment)) << "Failed to aligned to " << alignment;
     EXPECT_EQ(strcmp(letters, result), 0) << "Text mismatch at alignment=" << alignment;
     ASSERT_TRUE(os::unmap_memory(result, size));
@@ -1272,9 +1272,9 @@ TEST_VM(os, splittable_reserve_and_convert) {
 TEST_VM(os, splittable_split_two_way) {
   SKIP_IF_SPLITTABLE_NOT_SUPPORTED();
 
-  const size_t granule = os::vm_allocation_granularity();
-  const size_t total = 4 * granule;
-  const size_t split_offset = 3 * granule;
+  const size_t granularity = os::vm_allocation_granularity();
+  const size_t total = 4 * granularity;
+  const size_t split_offset = 3 * granularity;
 
   os::PlaceholderRegion region = os::reserve_placeholder_memory(total, mtTest);
   ASSERT_FALSE(region.is_empty());
@@ -1313,8 +1313,8 @@ TEST_VM(os, splittable_split_two_way) {
 // --- Aligned allocation tests ---
 
 TEST_VM(os, reserve_memory_aligned_basic) {
-  const size_t granule = os::vm_allocation_granularity();
-  const size_t alignments[] = { granule, 2 * granule, 4 * granule, 16 * granule };
+  const size_t granularity = os::vm_allocation_granularity();
+  const size_t alignments[] = { granularity, 2 * granularity, 4 * granularity, 16 * granularity };
 
   for (size_t alignment : alignments) {
     const size_t size = alignment;
