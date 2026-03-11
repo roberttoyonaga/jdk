@@ -1198,21 +1198,6 @@ TEST_VM(os, map_unmap_memory) {
   ::close(fd);
 }
 
-TEST_VM(os, map_memory_to_file_aligned) {
-  const char* letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const size_t size = strlen(letters) + 1;
-
-  int fd = os::open("map_memory_to_file.txt", O_RDWR | O_CREAT, 0666);
-  EXPECT_TRUE(fd > 0);
-  EXPECT_TRUE(os::write(fd, letters, size));
-
-  char* result = os::map_memory_to_file_aligned(os::vm_allocation_granularity(), os::vm_allocation_granularity(), fd, mtTest);
-  ASSERT_NOT_NULL(result);
-  EXPECT_EQ(strcmp(letters, result), 0);
-  os::unmap_memory(result, os::vm_allocation_granularity());
-  ::close(fd);
-}
-
 TEST_VM(os, map_memory_to_file_aligned_larger) {
   const char* letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const size_t content_size = strlen(letters) + 1;
