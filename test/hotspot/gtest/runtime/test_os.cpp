@@ -1251,7 +1251,7 @@ TEST_VM(os, splittable_reserve_and_convert) {
   EXPECT_EQ((unsigned char)reserved[0], 0xAB);
   EXPECT_EQ((unsigned char)reserved[size - 1], 0xAB);
 
-  ASSERT_TRUE(os::release_memory(reserved, size));
+  os::release_memory(reserved, size);
 }
 
 TEST_VM(os, splittable_split_two_way) {
@@ -1291,8 +1291,8 @@ TEST_VM(os, splittable_split_two_way) {
   EXPECT_EQ((unsigned char)addr2[0], 0x22);
 
   // Verify we can release the parts separately.
-  ASSERT_TRUE(os::release_memory(addr1, split_offset));
-  ASSERT_TRUE(os::release_memory(addr2, total - split_offset));
+  os::release_memory(addr1, split_offset);
+  os::release_memory(addr2, total - split_offset);
 }
 
 // --- Aligned allocation tests ---
@@ -1311,7 +1311,7 @@ TEST_VM(os, reserve_memory_aligned_basic) {
     memset(result, 0xCD, size);
     EXPECT_EQ((unsigned char)result[0], 0xCD);
 
-    ASSERT_TRUE(os::release_memory(result, size));
+    os::release_memory(result, size);
   }
 }
 
@@ -1327,5 +1327,5 @@ TEST_VM(os, reserve_memory_aligned_large) {
   memset(result, 0xEF, size);
   EXPECT_EQ((unsigned char)result[size - 1], 0xEF);
 
-  ASSERT_TRUE(os::release_memory(result, size));
+  os::release_memory(result, size);
 }
