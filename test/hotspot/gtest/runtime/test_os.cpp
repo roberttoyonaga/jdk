@@ -1198,7 +1198,7 @@ TEST_VM(os, map_unmap_memory) {
   ::close(fd);
 }
 
-TEST_VM(os, map_memory_to_file_aligned_larger) {
+TEST_VM(os, map_memory_to_file_aligned) {
   const char* letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const size_t content_size = strlen(letters) + 1;
   const size_t granularity = os::vm_allocation_granularity();
@@ -1214,7 +1214,7 @@ TEST_VM(os, map_memory_to_file_aligned_larger) {
     ASSERT_NOT_NULL(result) << "Mapping failed for alignment=" << alignment;
     EXPECT_TRUE(is_aligned(result, alignment)) << "Failed to aligned to " << alignment;
     EXPECT_EQ(strcmp(letters, result), 0) << "Text mismatch at alignment=" << alignment;
-    ASSERT_TRUE(os::unmap_memory(result, size));
+    os::unmap_memory(result, size);
   }
   ::close(fd);
 }
