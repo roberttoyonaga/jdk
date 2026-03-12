@@ -140,6 +140,7 @@ class MemTracker : AllStatic {
     assert_post_init();
     if (!enabled()) return;
     if (addr != nullptr) {
+      NmtVirtualMemoryLocker nvml;
       VirtualMemoryTracker::Instance::remove_released_region((address)addr, size);
     }
   }

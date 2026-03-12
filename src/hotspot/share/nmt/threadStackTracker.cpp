@@ -60,7 +60,6 @@ void ThreadStackTracker::delete_thread_stack(void* base, size_t size) {
   assert(base != nullptr, "Should have been filtered");
   align_thread_stack_boundaries_inward(base, size);
 
-  MemTracker::NmtVirtualMemoryLocker nvml;
   MemTracker::record_virtual_memory_release((address)base, size);
   _thread_count--;
 }

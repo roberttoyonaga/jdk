@@ -1960,6 +1960,9 @@ bool os::create_stack_guard_pages(char* addr, size_t bytes) {
   return os::pd_create_stack_guard_pages(addr, bytes);
 }
 
+// There is no lock protection keeping pd_reserve_memory and record_virtual_memory_reserve atomic.
+// We assume that there is some external synchronization that prevents a region from being released
+// before it is finished being reserved in this function.
 char* os::reserve_memory(size_t bytes, MemTag mem_tag, bool executable) {
   char* result = pd_reserve_memory(bytes, executable);
   if (result != nullptr) {
@@ -2312,17 +2315,12 @@ void os::uncommit_memory(char* addr, size_t bytes, bool executable) {
   log_debug(os, map)("Uncommitted " RANGEFMT, RANGEFMTARGS(addr, bytes));
 }
 
-// The scope of NmtVirtualMemoryLocker covers both pd_release_memory and record_virtual_memory_release because
-// these operations must happen atomically to avoid races causing NMT to fall out os sync with the OS reality.
-// We do not have the same lock protection for pd_reserve_memory and record_virtual_memory_reserve.
-// We assume that there is some external synchronization that prevents a region from being released
-// before it is finished being reserved.
+// pd_release_memory is called outside the protection of the NMT lock.
+// Until pd_release_memory is called, The OS is unable to give away the about-to-be-released range to another thread.
+// So there is no risk of another thread re-reserving the range before this function is done with it.
 void os::release_memory(char* addr, size_t bytes) {
   assert_nonempty_range(addr, bytes);
-  if (MemTracker::enabled()) {
-    MemTracker::NmtVirtualMemoryLocker nvml;
-    MemTracker::record_virtual_memory_release(addr, bytes);
-  }
+  MemTracker::record_virtual_memory_release(addr, bytes);
   if (!pd_release_memory(addr, bytes)) {
     fatal("Failed to release " RANGEFMT, RANGEFMTARGS(addr, bytes));
   }
@@ -2395,18 +2393,15 @@ char* os::map_memory(int fd, const char* file_name, size_t file_offset,
   return result;
 }
 
+// pd_unmap_memory is called outside the protection of the NMT lock.
+// Until we call pd_unmap_memory, the OS is unable to give away the about-to-be-unmapped range to another thread UNLESS
+// map_memory is called requesting this specific address. In that case MAP_FIXED will be used and the
+// about-to-be-unmapped region will be overwritten. That race is technically possible, but we assume
+// there is external synchronization to prevent a caller from re-mapping this specific address at least
+// until this function returns.
 void os::unmap_memory(char *addr, size_t bytes) {
-  bool result;
-  if (MemTracker::enabled()) {
-    MemTracker::NmtVirtualMemoryLocker nvml;
-    result = pd_unmap_memory(addr, bytes);
-    if (result) {
-      MemTracker::record_virtual_memory_release(addr, bytes);
-    }
-  } else {
-    result = pd_unmap_memory(addr, bytes);
-  }
-  if (!result) {
+  MemTracker::record_virtual_memory_release(addr, bytes);
+  if (!pd_unmap_memory(addr, bytes)) {
     fatal("Failed to unmap memory " RANGEFMT, RANGEFMTARGS(addr, bytes));
   }
 }
