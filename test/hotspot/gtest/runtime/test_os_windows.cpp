@@ -920,7 +920,7 @@ TEST_VM(os_windows, numa_placeholder_reserve_commit) {
         << "; expected interleaving across " << num_nodes << " nodes";
   }
 
-  ASSERT_TRUE(os::release_memory(result, size));
+  os::release_memory(result, size);
 }
 
 #endif
