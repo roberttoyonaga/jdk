@@ -3755,7 +3755,12 @@ char* os::pd_reserve_memory(size_t bytes, bool exec) {
 
 os::PlaceholderRegion os::pd_reserve_placeholder_memory(size_t bytes, bool exec, char* addr) {
   // mmap returns memory that is splittable by default.
-  char* base = anon_mmap(addr, bytes);
+  char* base;
+  if (addr != nullptr) {
+    base = pd_attempt_reserve_memory_at(addr, bytes, exec);
+  } else {
+    base = pd_reserve_memory(bytes, exec);
+  }
   return PlaceholderRegion(base, base != nullptr ? bytes : 0);
 }
 
