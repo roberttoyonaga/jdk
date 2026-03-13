@@ -1084,7 +1084,7 @@ static char* mmap_create_shared(size_t size) {
 // release a named shared memory region that was mmap-ed.
 //
 static void unmap_shared(char* addr, size_t bytes) {
-   MemTracker::record_virtual_memory_release(addr, bytes);
+  MemTracker::record_virtual_memory_release(addr, bytes);
   if (::munmap(addr, bytes) != 0) {
     fatal("os::release_memory failed (" PTR_FORMAT ", %zu)", p2i(addr), bytes);
   }
