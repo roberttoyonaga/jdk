@@ -3361,6 +3361,11 @@ static char* map_or_reserve_memory_aligned(size_t size, size_t alignment, int fi
 
     if (aligned_base != nullptr) {
       assert(is_aligned(aligned_base, alignment), "Result must be aligned");
+      if (file_desc == -1) {
+        MemTracker::record_virtual_memory_reserve(aligned_base, size, CALLER_PC, mem_tag);
+      } else {
+        MemTracker::record_virtual_memory_reserve_and_commit(aligned_base, size, CALLER_PC, mem_tag);
+      }
       return aligned_base;
     }
     log_trace(os)("Aligned allocation via VirtualAlloc2/MapViewOfFile3 failed, falling back to retry loop.");
