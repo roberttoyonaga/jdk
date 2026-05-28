@@ -205,32 +205,6 @@ class os: AllStatic {
     void print_on(outputStream* st) const;
   };
 
-  // A "reserved" region of address space that can be split or converted to a
-  // normal reservation. Conceptually distinct from a reserved region:
-  // callers must NOT call commit_memory, map_memory, or other operations
-  // directly on the raw address. They must first convert it via
-  // convert_to_reserved().
-  //
-  // On Windows, this wraps a placeholder allocation (VirtualAlloc2 with
-  // MEM_RESERVE_PLACEHOLDER). On POSIX platforms, any mmap'd region is
-  // inherently splittable, so this is a thin wrapper.
-  class PlaceholderRegion {
-    char* const  _base;
-    size_t const _size;
-  public:
-    PlaceholderRegion() : _base(nullptr), _size(0) {}
-    PlaceholderRegion(char* base, size_t size) : _base(base), _size(size) {}
-    PlaceholderRegion(const PlaceholderRegion& source) : _base(source._base), _size(source._size) {}
-    char*  base() const { return _base; }
-    size_t size() const { return _size; }
-    bool   is_empty() const { return _base == nullptr; }
-  };
-
-  struct PlaceholderRegionPair {
-    PlaceholderRegion left;
-    PlaceholderRegion right;
-  };
-
  private:
   static OSThread*          _starting_thread;
   static PageSizes          _page_sizes;
@@ -241,12 +215,6 @@ class os: AllStatic {
   static constexpr size_t _vm_min_address_default = 16 * M;
 
   static char*  pd_reserve_memory(size_t bytes, bool executable);
-
-  static PlaceholderRegion pd_reserve_placeholder_memory(size_t bytes, bool executable, char* addr = nullptr);
-
-  static PlaceholderRegionPair pd_split_memory(const PlaceholderRegion& orig, size_t offset);
-
-  static char* pd_convert_to_reserved(PlaceholderRegion region);
 
   static char*  pd_attempt_reserve_memory_at(char* addr, size_t bytes, bool executable);
 
@@ -544,29 +512,6 @@ class os: AllStatic {
 
   // Reserves virtual memory.
   static char*  reserve_memory(size_t bytes, MemTag mem_tag, bool executable = false);
-
-  // Reserves a virtual memory region that can be split after allocation.
-  // The returned region must be converted via convert_to_reserved() before committing.
-  // If the returned PlaceholderRegion is empty, the reservation failed.
-  // If addr is non-null, attempts to place the reservation at that address.
-  // This should only be called after os::init_2() has completed, otherwise the Windows API may not be initialized.
-  static PlaceholderRegion reserve_placeholder_memory(size_t bytes, MemTag mem_tag, bool executable = false, char* addr = nullptr);
-
-  // Split 'orig' at 'offset'. Returns left and right placeholder pieces as a PlaceholderRegionPair.
-  // The caller must not use 'orig' afterward.
-  // Offset must be page-aligned.
-  // If offset == orig.size(), returns { orig, empty }.
-  // If offset == 0, returns { empty, orig }.
-  // This should not fail. If unsuccessful, this function fails fatally.
-  static PlaceholderRegionPair split_memory(const PlaceholderRegion& orig, size_t offset);
-
-  // Convert a placeholder region into a regular reserved region.
-  // After conversion the Placeholder region should no longer be used.
-  // This should not fail. If unsuccessful, this function fails fatally.
-  static char* convert_to_reserved(PlaceholderRegion region);
-
-  // After releasing, the Placeholder region should no longer be used.
-  static void release_placeholder_memory(PlaceholderRegion region);
 
   // Reserves virtual memory that starts at an address that is aligned to 'alignment'.
   static char*  reserve_memory_aligned(size_t size, size_t alignment, MemTag mem_tag, bool executable = false);
