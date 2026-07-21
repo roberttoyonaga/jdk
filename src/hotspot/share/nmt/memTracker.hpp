@@ -90,6 +90,14 @@ class MemTracker : AllStatic {
     return mem_base;
   }
 
+  static inline void change_malloc_tag(void* memblock, MemTag new_tag) {
+      assert(memblock != nullptr, "caller should handle null");
+      if (!enabled()) {
+        return;
+      }
+      MallocTracker::change_tag(memblock, new_tag);
+  }
+
   // Record malloc free and return malloc base address
   static inline void* record_free(void* memblock) {
     // Never turned on

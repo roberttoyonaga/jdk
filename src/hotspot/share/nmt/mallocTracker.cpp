@@ -62,14 +62,6 @@ void MemoryCounter::update_peak(size_t size, size_t cnt) {
 }
 
 void MallocMemorySnapshot::copy_to(MallocMemorySnapshot* s) {
-  // Use lock to make sure that mtChunks don't get deallocated while the
-  // copy is going on, because their size is adjusted using this
-  // buffer in make_adjustment().
-  ChunkPoolLocker::LockStrategy ls = ChunkPoolLocker::LockStrategy::Lock;
-  if (VMError::is_error_reported() && VMError::is_error_reported_in_current_thread()) {
-    ls = ChunkPoolLocker::LockStrategy::Try;
-  }
-  ChunkPoolLocker cpl(ls);
   s->_all_mallocs = _all_mallocs;
   size_t total_size = 0;
   size_t total_count = 0;
@@ -89,15 +81,6 @@ size_t MallocMemorySnapshot::total_arena() const {
     amount += _malloc[index].arena_size();
   }
   return amount;
-}
-
-// Make adjustment by subtracting chunks used by arenas
-// from total chunks to get total free chunk size
-void MallocMemorySnapshot::make_adjustment() {
-  size_t arena_size = total_arena();
-  int chunk_idx = NMTUtil::tag_to_index(mtChunk);
-  _malloc[chunk_idx].record_free(arena_size);
-  _all_mallocs.deallocate(arena_size);
 }
 
 void MallocMemorySummary::initialize() {
@@ -201,6 +184,35 @@ void* MallocTracker::record_malloc(void* malloc_base, size_t size, MemTag mem_ta
 #endif
   MallocHeader::revive_block(memblock);
   return memblock;
+}
+
+void MallocTracker::change_tag(void* memblock, MemTag new_tag) {
+  assert(MemTracker::enabled(), "Sanity");
+  assert(memblock != nullptr, "precondition");
+  MallocHeader* header = (MallocHeader*)memblock - 1;
+
+  // Deaccount before re-accounting to not affect peak values.
+  // Leave the total malloc amounts unchanged.
+  MallocMemorySummary::as_snapshot()->by_tag(header->mem_tag())->record_free(header->size());
+
+  uint32_t new_mst_marker = 0;
+  if (MemTracker::tracking_level() == NMT_detail) {
+    // retrieve the old stack from MST
+    NativeCallStack old_stack;
+    if (!MallocSiteTable::access_stack(old_stack, *header)) {
+      fatal("NMT is now out of sync.");
+    }
+    MallocSiteTable::deallocation_at(header->size(), header->mst_marker());
+    // update MST with new tag
+    if (!MallocSiteTable::allocation_at(old_stack, header->size(), &new_mst_marker, new_tag)) {
+      fatal("NMT is now out of sync.");
+    }
+  }
+  MallocMemorySummary::as_snapshot()->by_tag(new_tag)->record_malloc(header->size());
+
+  // update header with new tag and new_mst_marker
+  header->set_mem_tag(new_tag);
+  header->set_mst_marker(new_mst_marker);
 }
 
 void* MallocTracker::record_free_block(void* memblock) {

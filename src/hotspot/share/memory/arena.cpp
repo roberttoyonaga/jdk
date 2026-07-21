@@ -181,6 +181,7 @@ Chunk* ChunkPool::allocate_chunk(Arena* arena, size_t length, AllocFailType allo
   if (pool != nullptr) {
     Chunk* c = pool->take_from_pool();
     if (c != nullptr) {
+      MemTracker::change_malloc_tag(c, arena->get_mem_tag());
       assert(c->length() == length, "wrong length?");
       chunk = c;
     }
@@ -188,7 +189,7 @@ Chunk* ChunkPool::allocate_chunk(Arena* arena, size_t length, AllocFailType allo
   if (chunk == nullptr) {
     // Either the pool was empty, or this is a non-standard length. Allocate a new Chunk from C-heap.
     size_t bytes = ARENA_ALIGN(sizeof(Chunk)) + length;
-    void* p = os::malloc(bytes, mtChunk, CALLER_PC);
+    void* p = os::malloc(bytes, arena->get_mem_tag(), CALLER_PC);
     if (p == nullptr && alloc_failmode == AllocFailStrategy::EXIT_OOM) {
       vm_exit_out_of_memory(bytes, OOM_MALLOC_ERROR, "Chunk::new");
     }
@@ -221,10 +222,9 @@ void ChunkPool::deallocate_chunk(Chunk* c) {
   // If this is a standard-sized chunk, return it to its pool; otherwise free it.
   ChunkPool* pool = ChunkPool::get_pool_for_size(c->length());
   if (pool != nullptr) {
+    MemTracker::change_malloc_tag(c, mtChunk);
     pool->return_to_pool(c);
   } else {
-    // Free chunks under a lock so that NMT adjustment is stable.
-    ChunkPoolLocker lock;
     os::free(c);
   }
 }
@@ -278,12 +278,12 @@ Arena::Arena(MemTag mem_tag, Tag tag, size_t init_size) :
   _hwm(nullptr), _max(nullptr)
 {
   init_size = ARENA_ALIGN(init_size);
+  MemTracker::record_new_arena(mem_tag);
+  set_size_in_bytes(init_size);
   _chunk = ChunkPool::allocate_chunk(this, init_size, AllocFailStrategy::EXIT_OOM);
   _first = _chunk;
   _hwm = _chunk->bottom();      // Save the cached hwm, max
   _max = _chunk->top();
-  MemTracker::record_new_arena(mem_tag);
-  set_size_in_bytes(init_size);
 }
 
 Arena::~Arena() {
@@ -337,9 +337,12 @@ void* Arena::grow(size_t x, AllocFailType alloc_failmode) {
   }
 
   Chunk* k = _chunk;            // Get filled-up chunk address
+  // Do this early so malloc peak values are correctly set
+  set_size_in_bytes(size_in_bytes() + len);
   _chunk = ChunkPool::allocate_chunk(this, len, alloc_failmode);
 
   if (_chunk == nullptr) {
+    set_size_in_bytes(size_in_bytes() - len);
     _chunk = k;                 // restore the previous value of _chunk
     return nullptr;
   }
@@ -351,7 +354,6 @@ void* Arena::grow(size_t x, AllocFailType alloc_failmode) {
   }
   _hwm  = _chunk->bottom();     // Save the cached hwm, max
   _max =  _chunk->top();
-  set_size_in_bytes(size_in_bytes() + len);
   void* result = _hwm;
   _hwm += x;
   return result;

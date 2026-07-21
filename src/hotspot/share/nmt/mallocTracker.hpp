@@ -96,6 +96,16 @@ class MemoryCounter {
   inline size_t peak_size() const {
     return AtomicAccess::load(&_peak_size);
   }
+
+  // Similar to allocate(), but is used by MallocMemory to
+  // track exclusive malloc peak (total malloc subtract arena).
+  inline void allocate_adjusted_peak(size_t sz, size_t peak_sub_sz, size_t peak_sub_cnt) {
+    size_t cnt = AtomicAccess::add(&_count, size_t(1), memory_order_relaxed);
+    if (sz > 0) {
+      size_t sum = AtomicAccess::add(&_size, sz, memory_order_relaxed);
+      update_peak(sum - peak_sub_sz, cnt - peak_sub_cnt);
+    }
+  }
 };
 
 /*
@@ -112,7 +122,7 @@ class MallocMemory {
   MallocMemory() { }
 
   inline void record_malloc(size_t sz) {
-    _malloc.allocate(sz);
+    _malloc.allocate_adjusted_peak(sz, _arena.size(), _arena.count());
   }
 
   inline void record_free(size_t sz) {
@@ -176,7 +186,7 @@ class MallocMemorySnapshot {
 
   // Total malloc'd memory amount
   size_t total() const {
-    return _all_mallocs.size() + malloc_overhead() + total_arena();
+    return _all_mallocs.size() + malloc_overhead();
   }
 
   // Total peak malloc
@@ -193,10 +203,6 @@ class MallocMemorySnapshot {
   size_t total_arena() const;
 
   void copy_to(MallocMemorySnapshot* s);
-
-  // Make adjustment by subtracting chunks used by arenas
-  // from total chunks to get total free chunk size
-  void make_adjustment();
 };
 
 /*
@@ -243,7 +249,6 @@ class MallocMemorySummary : AllStatic {
 
    static void snapshot(MallocMemorySnapshot* s) {
      as_snapshot()->copy_to(s);
-     s->make_adjustment();
    }
 
    // The memory used by malloc tracking headers
@@ -282,6 +287,9 @@ class MallocTracker : AllStatic {
   // Record  malloc on specified memory block
   static void* record_malloc(void* malloc_base, size_t size, MemTag mem_tag,
     const NativeCallStack& stack);
+
+  // Change the memtag of an existing malloc block and update appropriate NMT counters.
+  static void change_tag(void* memblock, MemTag new_tag);
 
   // Given a block returned by os::malloc() or os::realloc():
   // deaccount block from NMT, mark its header as dead and return pointer to header.

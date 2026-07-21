@@ -56,11 +56,11 @@ MemReporterBase::MemReporterBase(outputStream* out, size_t scale) :
   _scale(scale), _output(out) {}
 
 size_t MemReporterBase::reserved_total(const MallocMemory* malloc, const VirtualMemory* vm) {
-  return malloc->malloc_size() + malloc->arena_size() + vm->reserved();
+  return malloc->malloc_size() + vm->reserved();
 }
 
 size_t MemReporterBase::committed_total(const MallocMemory* malloc, const VirtualMemory* vm) {
-  return malloc->malloc_size() + malloc->arena_size() + vm->committed();
+  return malloc->malloc_size() + vm->committed();
 }
 
 void MemReporterBase::print_total(size_t reserved, size_t committed, size_t peak) const {
@@ -72,37 +72,35 @@ void MemReporterBase::print_total(size_t reserved, size_t committed, size_t peak
   }
 }
 
-void MemReporterBase::print_malloc(const MemoryCounter* c, MemTag mem_tag) const {
+void MemReporterBase::print_malloc(size_t amount, size_t count, size_t pk_amount, size_t pk_count, MemTag mem_tag) const {
   const char* scale = current_scale();
   outputStream* out = output();
   const char* alloc_type = (mem_tag == mtThreadStack) ? "" : "malloc=";
 
-  const size_t amount = c->size();
-  const size_t count = c->count();
-
   if (mem_tag != mtNone) {
     out->print("(%s%zu%s tag=%s", alloc_type,
-      amount_in_current_scale(amount), scale, NMTUtil::tag_to_name(mem_tag));
+               amount_in_current_scale(amount), scale, NMTUtil::tag_to_name(mem_tag));
   } else {
     out->print("(%s%zu%s", alloc_type,
-      amount_in_current_scale(amount), scale);
+               amount_in_current_scale(amount), scale);
   }
 
-  // blends out mtChunk count number
   if (count > 0) {
     out->print(" #%zu", count);
   }
 
   out->print(")");
 
-  size_t pk_amount = c->peak_size();
   if (pk_amount == amount) {
     out->print_raw(" (at peak)");
   } else if (pk_amount > amount) {
-    size_t pk_count = c->peak_count();
     out->print(" (peak=%zu%s #%zu)",
-        amount_in_current_scale(pk_amount), scale, pk_count);
+               amount_in_current_scale(pk_amount), scale, pk_count);
   }
+}
+
+void MemReporterBase::print_malloc(const MemoryCounter* c, MemTag mem_tag) const {
+  print_malloc(c->size(), c->count(), c->peak_size(), c->peak_count(), mem_tag);
 }
 
 void MemReporterBase::print_virtual_memory(size_t reserved, size_t committed, size_t peak) const {
@@ -250,8 +248,10 @@ void MemSummaryReporter::report_summary_of_tag(MemTag mem_tag,
   }
 
    // report malloc'd memory
-  if (amount_in_current_scale(MAX2(malloc_memory->malloc_size(), pk_malloc)) > 0) {
-    print_malloc(malloc_memory->malloc_counter(), mem_tag);
+  const size_t excl_malloc_size = malloc_memory->malloc_size() - malloc_memory->arena_size();
+  const size_t excl_malloc_count = malloc_memory->malloc_count() - malloc_memory->arena_count();
+  if (amount_in_current_scale(MAX2(excl_malloc_size, pk_malloc)) > 0) {
+    print_malloc(excl_malloc_size, excl_malloc_count, pk_malloc, malloc_memory->malloc_counter()->peak_count(), mem_tag);
     out->cr();
   }
 
@@ -700,13 +700,15 @@ void MemSummaryDiffReporter::diff_summary_of_tag(MemTag mem_tag,
     }
 
     // Report malloc'd memory
-    size_t current_malloc_amount = current_malloc->malloc_size();
-    size_t early_malloc_amount   = early_malloc->malloc_size();
+    size_t current_malloc_amount = current_malloc->malloc_size() - current_malloc->arena_size();
+    size_t early_malloc_amount = early_malloc->malloc_size() - early_malloc->arena_size();
+    size_t current_malloc_count = current_malloc->malloc_count() - current_malloc->arena_count();
+    size_t early_malloc_count = early_malloc->malloc_count() - early_malloc->arena_count();
     if (amount_in_current_scale(current_malloc_amount) > 0 ||
         diff_in_current_scale(current_malloc_amount, early_malloc_amount) != 0) {
       out->print("(");
-      print_malloc_diff(current_malloc_amount, (mem_tag == mtChunk) ? 0 : current_malloc->malloc_count(),
-        early_malloc_amount, early_malloc->malloc_count(), mtNone);
+      print_malloc_diff(current_malloc_amount, current_malloc_count,
+        early_malloc_amount, early_malloc_count, mtNone);
       out->print_cr(")");
     }
 
