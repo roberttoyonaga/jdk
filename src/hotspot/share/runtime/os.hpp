@@ -210,8 +210,8 @@ class os: AllStatic {
   // directly on the raw address. They must first convert it via
   // convert_to_reserved().
   class PlaceholderRegion {
-      char* const  _base;
-      size_t const _size;
+      char*  _base;
+      size_t _size;
   public:
       PlaceholderRegion() : _base(nullptr), _size(0) {}
       PlaceholderRegion(char* base, size_t size) : _base(base), _size(size) {
@@ -223,7 +223,6 @@ class os: AllStatic {
           assert(size == 0, "Empty Placeholder must have zero size.");
         }
       }
-      PlaceholderRegion(const PlaceholderRegion& source) : PlaceholderRegion(source._base, source._size) {}
       char*  base() const { return _base; }
       size_t size() const { return _size; }
       bool   is_empty() const { return _base == nullptr; }
