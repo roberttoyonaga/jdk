@@ -1966,6 +1966,7 @@ bool os::create_stack_guard_pages(char* addr, size_t bytes) {
 }
 
 bool os::placeholders_supported() {
+  DEBUG_ONLY(if (!TestAOTPlaceholders) return false;)
   return pd_placeholders_supported();
 }
 
