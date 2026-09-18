@@ -1764,6 +1764,7 @@ MapArchiveResult AOTMetaspace::map_archives(FileMapInfo* static_mapinfo, FileMap
       archive_placeholder = split.right;
       char* prot_base = os::convert_to_reserved(split.left);
       prot_zone_rs = ReservedSpace(prot_base, prot_zone_size, core_region_alignment(), os::vm_page_size(), false, false);
+      aot_log_info(aot)("Split off prot zone start" INTPTR_FORMAT " end " INTPTR_FORMAT, p2i(prot_base), p2i(prot_base + prot_zone_size)); //TODO: remove later
     }
 
     if (prot_zone_size > 0) {
@@ -1885,10 +1886,12 @@ MapArchiveResult AOTMetaspace::map_archives(FileMapInfo* static_mapinfo, FileMap
     if (!archive_placeholder.is_empty()) {
       os::release_memory(archive_placeholder);
       archive_placeholder = os::PlaceholderRegion();
+      aot_log_info(aot)("Clean up archive_placeholder."); //TODO: remove later
     }
     if (prot_zone_rs.is_reserved()) {
       MemoryReserver::release(prot_zone_rs);
       prot_zone_rs = {};
+      aot_log_info(aot)("Cleaned up off prot zone."); //TODO: remove later
     }
   }
 
@@ -2043,6 +2046,7 @@ char* AOTMetaspace::reserve_address_space_for_archives(FileMapInfo* static_mapin
       MemTracker::record_virtual_memory_split_reserved(base_address, total_range_size,
                                                        ccs_begin_offset, mtClassShared, mtClass);
       archive_placeholder = split.left;
+      aot_log_info(aot)("Placeholders allocated successfully. Archive base: " INTPTR_FORMAT, p2i(archive_placeholder.base()));
       return archive_placeholder.base();
     }
   }
