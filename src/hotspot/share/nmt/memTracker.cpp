@@ -134,7 +134,9 @@ void MemTracker::report(bool summary_only, outputStream* output, size_t scale) {
   MemBaseline baseline;
   baseline.baseline(summary_only);
   if (summary_only) {
-    MemSummaryReporter rpt(baseline, output, scale);
+    NMTRssSnapshot rssSnapshot;
+    rssSnapshot.collect();
+    MemSummaryReporter rpt(baseline, output, scale, &rssSnapshot);
     rpt.report();
   } else {
     MemDetailReporter rpt(baseline, output, scale);

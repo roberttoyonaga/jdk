@@ -25,6 +25,7 @@
 #include "nmt/memReporter.hpp"
 #include "nmt/memTracker.hpp"
 #include "nmt/nmtDCmd.hpp"
+#include "nmt/nmtRss.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "runtime/vmOperations.hpp"
 #include "runtime/vmThread.hpp"
@@ -151,7 +152,9 @@ void NMTDCmd::report(bool summaryOnly, size_t scale_unit) {
   MemBaseline baseline;
   baseline.baseline(summaryOnly);
   if (summaryOnly) {
-    MemSummaryReporter rpt(baseline, output(), scale_unit);
+    NMTRssSnapshot rssSnapshot;
+    rssSnapshot.collect();
+    MemSummaryReporter rpt(baseline, output(), scale_unit, &rssSnapshot);
     rpt.report();
   } else {
     MemDetailReporter rpt(baseline, output(), scale_unit);

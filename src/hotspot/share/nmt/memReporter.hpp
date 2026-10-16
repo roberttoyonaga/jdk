@@ -30,6 +30,7 @@
 #include "nmt/memBaseline.hpp"
 #include "nmt/nativeCallStackPrinter.hpp"
 #include "nmt/nmtCommon.hpp"
+#include "nmt/nmtRss.hpp"
 #include "nmt/virtualMemoryTracker.hpp"
 #include "utilities/nativeCallStack.hpp"
 
@@ -110,6 +111,7 @@ class MemReporterBase : public StackObj {
   void print_malloc(const MemoryCounter* c, MemTag mem_tag) const;
   void print_virtual_memory(size_t reserved, size_t committed, size_t peak) const;
   void print_arena(const MemoryCounter* c) const;
+  void print_rss(size_t rss) const;
 
   void print_virtual_memory_region(const char* type, address base, size_t size) const;
 };
@@ -121,15 +123,17 @@ class MemSummaryReporter : public MemReporterBase {
  private:
   MallocMemorySnapshot*   _malloc_snapshot;
   VirtualMemorySnapshot*  _vm_snapshot;
+  NMTRssSnapshot*         _rss_snapshot;
   size_t                  _instance_class_count;
   size_t                  _array_class_count;
 
  public:
-  // This constructor is for normal reporting from a recent baseline.
+  // This constructor is for normal reporting from a recent baseline._array_class_count;
   MemSummaryReporter(MemBaseline& baseline, outputStream* output,
-    size_t scale = default_scale) : MemReporterBase(output, scale),
+    size_t scale = default_scale, NMTRssSnapshot* rssSnapshot = nullptr) : MemReporterBase(output, scale),
     _malloc_snapshot(baseline.malloc_memory_snapshot()),
     _vm_snapshot(baseline.virtual_memory_snapshot()),
+    _rss_snapshot(rssSnapshot),
     _instance_class_count(baseline.instance_class_count()),
     _array_class_count(baseline.array_class_count()) { }
 

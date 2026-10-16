@@ -33,6 +33,7 @@
 #include "nmt/memMapPrinter.hpp"
 #include "nmt/memTag.hpp"
 #include "nmt/memTracker.hpp"
+#include "nmt/nmtVMACache.hpp"
 #include "nmt/virtualMemoryTracker.hpp"
 #include "runtime/nonJavaThread.hpp"
 #include "runtime/osThread.hpp"
@@ -73,92 +74,6 @@ static const char* get_shortname_for_mem_tag(MemTag mem_tag) {
 #undef DO
   return NMTUtil::tag_to_enum_name(mem_tag);
 }
-
-/// NMT virtual memory
-
-static bool range_intersects(const void* from1, const void* to1, const void* from2, const void* to2) {
-  return MAX2(from1, from2) < MIN2(to1, to2);
-}
-
-// A Cache that correlates range with MemTag, optimized to be iterated quickly
-// (cache friendly).
-class CachedNMTInformation : public VirtualMemoryWalker {
-  struct Range { const void* from; const void* to; };
-  // We keep ranges apart from flags since that prevents the padding a combined
-  // structure would have, and it allows for faster iteration of ranges since more
-  // of them fit into a cache line.
-  Range* _ranges;
-  MemTag* _mem_tags;
-  size_t _count, _capacity;
-  mutable size_t _last;
-
-public:
-  CachedNMTInformation() : _ranges(nullptr), _mem_tags(nullptr),
-                           _count(0), _capacity(0), _last(0) {}
-
-  ~CachedNMTInformation() {
-    permit_forbidden_function::free(_ranges);
-    permit_forbidden_function::free(_mem_tags);
-  }
-
-  bool add(const void* from, const void* to, MemTag mem_tag) {
-    // We rely on NMT regions being sorted by base
-    assert(_count == 0 || (from >= _ranges[_count - 1].to), "NMT regions unordered?");
-    // we can just fold two regions if they are adjacent and have the same mem_tag.
-    if (_count > 0 && from == _ranges[_count - 1].to && mem_tag == _mem_tags[_count - 1]) {
-      _ranges[_count - 1].to = to;
-      return true;
-    }
-    if (_count == _capacity) {
-      // Enlarge if needed
-      const size_t new_capacity = MAX2((size_t)4096, 2 * _capacity);
-      // Unfortunately, we need to allocate manually, raw, since we must prevent NMT deadlocks.
-      _ranges = (Range*)permit_forbidden_function::realloc(_ranges, new_capacity * sizeof(Range));
-      _mem_tags = (MemTag*)permit_forbidden_function::realloc(_mem_tags, new_capacity * sizeof(MemTag));
-      if (_ranges == nullptr || _mem_tags == nullptr) {
-        // In case of OOM lets make no fuss. Just return.
-        return false;
-      }
-      _capacity = new_capacity;
-    }
-    assert(_capacity > _count, "Sanity");
-    _ranges[_count] = Range { from, to };
-    _mem_tags[_count] = mem_tag;
-    _count++;
-    return true;
-  }
-
-  // Given a vma [from, to), find all regions that intersect with this vma and
-  // fill out their collective flags into bm.
-  void lookup(const void* from, const void* to, ResourceBitMap& bm) const {
-    assert(from <= to, "Sanity");
-    // We optimize for sequential lookups. Since this class is used when a list
-    // of OS mappings is scanned (VirtualQuery, /proc/pid/maps), and these lists
-    // are usually sorted in order of addresses, ascending.
-    if (to <= _ranges[_last].from) {
-      // the range is to the right of the given section, we need to re-start the search
-      _last = 0;
-    }
-    for(uintx i = _last; i < _count; i++) {
-      if (range_intersects(from, to, _ranges[i].from, _ranges[i].to)) {
-        bm.set_bit((BitMap::idx_t)_mem_tags[i]);
-      } else if (to <= _ranges[i].from) {
-        _last = i;
-        break;
-      }
-    }
-  }
-
-  bool do_allocation_site(const VirtualMemoryRegion* rgn) override {
-    // Cancel iteration if we run out of memory (add returns false);
-    return add(rgn->base(), rgn->end(), rgn->mem_tag());
-  }
-
-  // Iterate all NMT virtual memory regions and fill this cache.
-  bool fill_from_nmt() {
-    return MemTracker::walk_virtual_memory(this);
-  }
-};
 
 /////// Thread information //////////////////////////
 
