@@ -237,29 +237,6 @@ size_t VirtualMemoryTracker::Instance::committed_size(const VirtualMemoryRegion*
   return _tracker->committed_size(rgn);
 }
 
-address VirtualMemoryTracker::Instance::thread_stack_uncommitted_bottom(const VirtualMemoryRegion* rgn) {
-  assert(_tracker != nullptr, "Sanity check");
-  return _tracker->thread_stack_uncommitted_bottom(rgn);
-}
-
-address VirtualMemoryTracker::thread_stack_uncommitted_bottom(const VirtualMemoryRegion* rgn) {
-  address bottom = rgn->base();
-  address top = rgn->end();
-    tree()->visit_committed_regions(*rgn, [&](VirtualMemoryRegion& crgn) {
-    address committed_top = crgn.base() + crgn.size();
-    if (committed_top < top) {
-      // committed stack guard pages, skip them
-      bottom = crgn.base() + crgn.size();
-    } else {
-      assert(top == committed_top, "Sanity, top=" INTPTR_FORMAT " , com-top=" INTPTR_FORMAT, p2i(top), p2i(committed_top));
-      return false;;
-    }
-    return true;
-  });
-
-  return bottom;
-}
-
 // Iterate the range, find committed region within its bound.
 class RegionIterator : public StackObj {
 private:
@@ -295,6 +272,28 @@ bool RegionIterator::next_committed(address& committed_start, size_t& committed_
 
 // Walk all known thread stacks, snapshot their committed ranges.
 class SnapshotThreadStackWalker : public VirtualMemoryWalker {
+private:
+  static bool scan_and_commit_gap(address gap_base, size_t gap_size) {
+    address committed_start;
+    size_t  committed_size;
+    size_t aligned_gap_size = align_up(gap_size, os::vm_page_size());
+
+    NativeCallStack ncs; // empty stack
+
+    RegionIterator itr(gap_base, aligned_gap_size);
+    bool found = false;
+    while (itr.next_committed(committed_start, committed_size)) {
+      assert(committed_start != nullptr, "Should not be null");
+      assert(committed_size > 0, "Should not be 0");
+      if (gap_base + gap_size < committed_start + committed_size) {
+        committed_size = gap_base + gap_size - committed_start;
+      }
+      VirtualMemoryTracker::Instance::add_committed_region(committed_start, committed_size, ncs);
+      found = true;
+    }
+    return found;
+  }
+
 public:
   SnapshotThreadStackWalker() {}
 
@@ -303,26 +302,19 @@ public:
       assert_lock_strong(NmtVirtualMemory_lock);
     }
     if (rgn->mem_tag() == mtThreadStack) {
-      address stack_bottom = VirtualMemoryTracker::Instance::thread_stack_uncommitted_bottom(rgn);
-      address committed_start;
-      size_t  committed_size;
-      size_t stack_size = rgn->base() + rgn->size() - stack_bottom;
-      // Align the size to work with full pages (Alpine and AIX stack top is not page aligned)
-      size_t aligned_stack_size = align_up(stack_size, os::vm_page_size());
-
-      NativeCallStack ncs; // empty stack
-
-      RegionIterator itr(stack_bottom, aligned_stack_size);
       DEBUG_ONLY(bool found_stack = false;)
-      while (itr.next_committed(committed_start, committed_size)) {
-        assert(committed_start != nullptr, "Should not be null");
-        assert(committed_size > 0, "Should not be 0");
-        // unaligned stack_size case: correct the region to fit the actual stack_size
-        if (stack_bottom + stack_size < committed_start + committed_size) {
-          committed_size = stack_bottom + stack_size - committed_start;
+      address gap_start = rgn->base();
+      // Don't waste effort scanning known committed regions
+      VirtualMemoryTracker::Instance::tree()->visit_committed_regions(*rgn, [&](VirtualMemoryRegion& crgn) {
+        if (crgn.base() > gap_start) {
+          DEBUG_ONLY(found_stack |=) scan_and_commit_gap(gap_start, crgn.base() - gap_start);
         }
-        VirtualMemoryTracker::Instance::add_committed_region(committed_start, committed_size, ncs);
-        DEBUG_ONLY(found_stack = true;)
+        gap_start = crgn.end();
+        return true;
+      });
+      // We may need to do one more search if the last committed region was a guard page
+      if (gap_start < rgn->end()) {
+        DEBUG_ONLY(found_stack |=) scan_and_commit_gap(gap_start, rgn->end() - gap_start);
       }
 #ifdef ASSERT
       if (!found_stack) {
