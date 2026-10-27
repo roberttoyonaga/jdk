@@ -91,7 +91,7 @@ public:
         // We really shouldn't reach here, but check anyway just in case there are accounting inconsistencies.
         continue;
       }
-      if (_ranges[i].from >= to) {
+      if (to <= _ranges[i].from) {
         // *** stopping condition. We've hit the end of this VMA, time to parse the next line
         break;
       }
@@ -155,8 +155,10 @@ public:
       if (range_intersects(from, to, _ranges[i].from, _ranges[i].to)) {
         bm.set_bit((BitMap::idx_t)_mem_tags[i]);
       } else if (to <= _ranges[i].from) {
-        _last = i;
         break;
+      }
+      if (_ranges[i].to <= to) {
+        _last = i + 1;
       }
     }
   }
