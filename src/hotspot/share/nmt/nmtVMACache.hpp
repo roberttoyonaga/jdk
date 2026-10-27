@@ -25,6 +25,7 @@
 #ifndef SHARE_NMT_NMTVMACACHE_HPP
 #define SHARE_NMT_NMTVMACACHE_HPP
 
+#include "logging/log.hpp"
 #include "nmt/memTag.hpp"
 #include "nmt/memTracker.hpp"
 #include "nmt/virtualMemoryTracker.hpp"
@@ -78,7 +79,8 @@ public:
     IntersectionResult result;
     result.count = 0;
 
-    if (_count <= _last) { // TODO remove this. lookup() doesn't do this.
+    if (_count <= _last) {
+      // Precaution for sanity
       return result;
     }
 
@@ -102,7 +104,7 @@ public:
         result.intersections[result.count].tag = _mem_tags[i];
         result.count++;
       } else {
-        //TODO log a warning
+        log_warning(nmt)("Too many intersections with VMA.");
       }
       if (_ranges[i].to <= to) {
         // Only bump _last when we know the NMT region does not overlap with the next VMA.

@@ -36,7 +36,7 @@ public:
   NMTRssSnapshot() : _rss_by_tag{}, _total_rss(0) {}
   // Gathers instantaneous RSS data.
   // Only supported on linux for now.
-  bool collect(); //*** TODO consider calling this pd_collect, but not if it's accessible outside this class
+  bool collect();
   size_t rss(MemTag mem_tag) const { return _rss_by_tag[NMTUtil::tag_to_index(mem_tag)]; }
   size_t total_rss() const { return _total_rss; }
 };

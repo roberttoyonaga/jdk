@@ -22,6 +22,7 @@
  *
  */
 
+#include "logging/log.hpp"
 #include "nmt/nmtVMACache.hpp"
 #include "nmt/nmtRss.hpp"
 #include "procMapsParser.hpp"
@@ -37,7 +38,7 @@ bool NMTRssSnapshot::collect() {
   constexpr char filename[] = "/proc/self/smaps";
   FILE* f = os::fopen(filename, "r");
   if (f == nullptr) {
-    // TODO log a warning
+    log_warning(nmt)("Failed to open %s for NMT RSS collection.", filename);
     return false;
   }
 
@@ -62,10 +63,9 @@ bool NMTRssSnapshot::collect() {
     size_t vma_size = pointer_delta(info.to, info.from, 1);
     if (result.count == 1) {
       size_t nmt_region_size = pointer_delta(result.intersections[0].to, result.intersections[0].from, 1);
-      // nmt_region_size is already clamped at the VMA size.
-      _rss_by_tag[NMTUtil::tag_to_index(result.intersections[0].tag)] += info.rss * nmt_region_size / vma_size; //*** This causes CODE rss to match committed
-      //_rss_by_tag[NMTUtil::tag_to_index(result.intersections[0].tag)] += info.rss; // *** this path causes CODE rss to be higher than committed
-
+      // nmt_region_size is already clamped to the VMA size.
+      // Possible overflow risk if regions are very large.
+      _rss_by_tag[NMTUtil::tag_to_index(result.intersections[0].tag)] += info.rss * nmt_region_size / vma_size;
       // Only count RSS corresponding to an NMT region.
       //_total_rss += info.rss * nmt_region_size / vma_size;
       continue;
@@ -75,7 +75,8 @@ bool NMTRssSnapshot::collect() {
     // Distribute RSS proportionally.
     for (int i = 0; i < result.count; i++) {
       size_t nmt_region_size = pointer_delta(result.intersections[i].to, result.intersections[i].from, 1);
-      _rss_by_tag[NMTUtil::tag_to_index(result.intersections[i].tag)] += info.rss * nmt_region_size / vma_size; //TODO consider overflow
+      // Possible overflow risk if regions are very large.
+      _rss_by_tag[NMTUtil::tag_to_index(result.intersections[i].tag)] += info.rss * nmt_region_size / vma_size;
       // Only count RSS corresponding to an NMT region.
       //_total_rss += info.rss * nmt_region_size / vma_size;
     }
