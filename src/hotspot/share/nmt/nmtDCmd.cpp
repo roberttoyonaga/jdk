@@ -151,13 +151,13 @@ void NMTDCmd::execute(DCmdSource source, TRAPS) {
 void NMTDCmd::report(bool summaryOnly, size_t scale_unit) {
   MemBaseline baseline;
   baseline.baseline(summaryOnly);
+  NMTRssSnapshot rssSnapshot;
   if (summaryOnly) {
-    NMTRssSnapshot rssSnapshot;
     rssSnapshot.collect();
-    MemSummaryReporter rpt(baseline, output(), scale_unit, &rssSnapshot);
+    MemSummaryReporter rpt(baseline, rssSnapshot, output(), scale_unit);
     rpt.report();
   } else {
-    MemDetailReporter rpt(baseline, output(), scale_unit);
+    MemDetailReporter rpt(baseline, rssSnapshot, output(), scale_unit);
     rpt.report();
   }
 }

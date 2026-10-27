@@ -123,14 +123,14 @@ class MemSummaryReporter : public MemReporterBase {
  private:
   MallocMemorySnapshot*   _malloc_snapshot;
   VirtualMemorySnapshot*  _vm_snapshot;
-  NMTRssSnapshot*         _rss_snapshot;
+  NMTRssSnapshot&         _rss_snapshot;
   size_t                  _instance_class_count;
   size_t                  _array_class_count;
 
  public:
   // This constructor is for normal reporting from a recent baseline._array_class_count;
-  MemSummaryReporter(MemBaseline& baseline, outputStream* output,
-    size_t scale = default_scale, NMTRssSnapshot* rssSnapshot = nullptr) : MemReporterBase(output, scale),
+  MemSummaryReporter(MemBaseline& baseline, NMTRssSnapshot& rssSnapshot, outputStream* output,
+    size_t scale = default_scale) : MemReporterBase(output, scale),
     _malloc_snapshot(baseline.malloc_memory_snapshot()),
     _vm_snapshot(baseline.virtual_memory_snapshot()),
     _rss_snapshot(rssSnapshot),
@@ -156,8 +156,8 @@ class MemDetailReporter : public MemSummaryReporter {
   MemBaseline&   _baseline;
   NativeCallStackPrinter _stackprinter;
  public:
-  MemDetailReporter(MemBaseline& baseline, outputStream* output, size_t scale = default_scale) :
-    MemSummaryReporter(baseline, output, scale),
+  MemDetailReporter(MemBaseline& baseline, NMTRssSnapshot& rssSnapshot, outputStream* output, size_t scale = default_scale) :
+    MemSummaryReporter(baseline, rssSnapshot, output, scale),
      _baseline(baseline), _stackprinter(output) { }
 
   // Generate detail report.

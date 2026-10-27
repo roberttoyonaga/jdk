@@ -29,17 +29,17 @@
 #include "runtime/os.hpp"
 #include "utilities/globalDefinitions.hpp"
 
-bool NMTRssSnapshot::collect() {
+void NMTRssSnapshot::collect() {
   CachedNMTInformation nmt_cache;
   if (!nmt_cache.fill_from_nmt()) {
-    return false;
+    return;
   }
 
   constexpr char filename[] = "/proc/self/smaps";
   FILE* f = os::fopen(filename, "r");
   if (f == nullptr) {
     log_warning(nmt)("Failed to open %s for NMT RSS collection.", filename);
-    return false;
+    return;
   }
 
   ProcSmapsInfo info;
@@ -83,5 +83,6 @@ bool NMTRssSnapshot::collect() {
   }
 
   ::fclose(f);
-  return true;
+  _is_valid = true;
+  return;
 }

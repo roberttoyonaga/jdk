@@ -181,8 +181,10 @@ void MemSummaryReporter::report() {
     out->print("mmap:   ");
     print_total(total_mmap_reserved_bytes, total_mmap_committed_bytes);
     out->cr();
-    out->print("rss:   ");
-    out->print("%zu%s", amount_in_current_scale(_rss_snapshot->total_rss() /*+ total_malloced_bytes*/), current_scale());
+    if (_rss_snapshot.is_valid()) {
+      out->print("rss:   ");
+      out->print("%zu%s", amount_in_current_scale(_rss_snapshot.total_rss() /*+ total_malloced_bytes*/), current_scale());
+    }
   )
   out->cr();
   out->cr();
@@ -274,15 +276,15 @@ void MemSummaryReporter::report_summary_of_tag(MemTag mem_tag,
     out->cr();
   }
 
-  if (_rss_snapshot != nullptr) {
-    size_t rss = _rss_snapshot->rss(mem_tag);
+  if (_rss_snapshot.is_valid()) {
+    size_t rss = _rss_snapshot.rss(mem_tag);
 
     // Treat malloc memory as fully resident.
     rss += malloc_memory->malloc_size() + malloc_memory->arena_size();
 
     if (mem_tag == mtThread) {
       // The report combines mtThreadStack with mtThread above, we need to combine them here too.
-      rss += _rss_snapshot->rss(mtThreadStack);
+      rss += _rss_snapshot.rss(mtThreadStack);
     } else if (mem_tag == mtNMT) {
       // Just like in the committed size printed above, the headers count toward rss
       rss += _malloc_snapshot->malloc_overhead();

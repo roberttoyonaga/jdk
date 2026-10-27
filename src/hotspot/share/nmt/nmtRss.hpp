@@ -32,11 +32,17 @@
 class NMTRssSnapshot {
   size_t _rss_by_tag[mt_number_of_tags];
   size_t _total_rss;
+  bool _is_valid;
+
 public:
-  NMTRssSnapshot() : _rss_by_tag{}, _total_rss(0) {}
+  NMTRssSnapshot() : _rss_by_tag{}, _total_rss(0), _is_valid(false) {}
   // Gathers instantaneous RSS data.
-  // Only supported on linux for now.
-  bool collect();
+  LINUX_ONLY(void collect();)
+  NOT_LINUX(void collect() { })
+
+  // collect() has successfully completed on this snapshot.
+  bool is_valid() const { return _is_valid; }
+
   size_t rss(MemTag mem_tag) const { return _rss_by_tag[NMTUtil::tag_to_index(mem_tag)]; }
   size_t total_rss() const { return _total_rss; }
 };

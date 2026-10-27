@@ -133,13 +133,13 @@ void MemTracker::report(bool summary_only, outputStream* output, size_t scale) {
  assert(output != nullptr, "No output stream");
   MemBaseline baseline;
   baseline.baseline(summary_only);
+  NMTRssSnapshot rssSnapshot;
   if (summary_only) {
-    NMTRssSnapshot rssSnapshot;
     rssSnapshot.collect();
-    MemSummaryReporter rpt(baseline, output, scale, &rssSnapshot);
+    MemSummaryReporter rpt(baseline, rssSnapshot, output, scale);
     rpt.report();
   } else {
-    MemDetailReporter rpt(baseline, output, scale);
+    MemDetailReporter rpt(baseline, rssSnapshot, output, scale);
     rpt.report();
     output->print("Metaspace:");
     // The basic metaspace report avoids any locking and should be safe to
