@@ -133,9 +133,8 @@ void MemTracker::report(bool summary_only, outputStream* output, size_t scale) {
  assert(output != nullptr, "No output stream");
   MemBaseline baseline;
   baseline.baseline(summary_only);
-  NMTRssSnapshot rssSnapshot;
+  NMTRssSnapshot rssSnapshot;// Remains invalid. Avoid reading /proc/self/smaps during a crash.
   if (summary_only) {
-    rssSnapshot.collect();
     MemSummaryReporter rpt(baseline, rssSnapshot, output, scale);
     rpt.report();
   } else {

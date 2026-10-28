@@ -52,6 +52,8 @@ NMTDCmd::NMTDCmd(outputStream* output,
             "BOOLEAN", false, "false"),
   _statistics("statistics", "print tracker statistics for tuning purpose.", \
             "BOOLEAN", false, "false"),
+  _rss("rss", "Include RSS in the report (Linux only).", \
+            "BOOLEAN", false, "false"),
   _scale("scale", "Memory usage in which scale, KB, MB or GB",
        "STRING", false, "KB") {
   _dcmdparser.add_dcmd_option(&_summary);
@@ -60,6 +62,7 @@ NMTDCmd::NMTDCmd(outputStream* output,
   _dcmdparser.add_dcmd_option(&_summary_diff);
   _dcmdparser.add_dcmd_option(&_detail_diff);
   _dcmdparser.add_dcmd_option(&_statistics);
+  _dcmdparser.add_dcmd_option(&_rss);
   _dcmdparser.add_dcmd_option(&_scale);
 }
 
@@ -152,8 +155,10 @@ void NMTDCmd::report(bool summaryOnly, size_t scale_unit) {
   MemBaseline baseline;
   baseline.baseline(summaryOnly);
   NMTRssSnapshot rssSnapshot;
-  if (summaryOnly) {
+  if (_rss.value()) {
     rssSnapshot.collect();
+  }
+  if (summaryOnly) {
     MemSummaryReporter rpt(baseline, rssSnapshot, output(), scale_unit);
     rpt.report();
   } else {
