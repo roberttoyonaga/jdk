@@ -133,12 +133,12 @@ void MemTracker::report(bool summary_only, outputStream* output, size_t scale) {
  assert(output != nullptr, "No output stream");
   MemBaseline baseline;
   baseline.baseline(summary_only);
-  NMTRssSnapshot rssSnapshot;// Remains invalid. Avoid reading /proc/self/smaps during a crash.
+  // No RSS reporting Avoid reading /proc/self/smaps during a crash.
   if (summary_only) {
-    MemSummaryReporter rpt(baseline, rssSnapshot, output, scale);
+    MemSummaryReporter rpt(baseline, output, scale);
     rpt.report();
   } else {
-    MemDetailReporter rpt(baseline, rssSnapshot, output, scale);
+    MemDetailReporter rpt(baseline, output, scale);
     rpt.report();
     output->print("Metaspace:");
     // The basic metaspace report avoids any locking and should be safe to
