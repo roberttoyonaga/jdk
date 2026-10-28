@@ -133,7 +133,7 @@ void MemTracker::report(bool summary_only, outputStream* output, size_t scale) {
  assert(output != nullptr, "No output stream");
   MemBaseline baseline;
   baseline.baseline(summary_only);
-  // No RSS reporting Avoid reading /proc/self/smaps during a crash.
+  // No RSS reporting to reading /proc/self/smaps during a crash.
   if (summary_only) {
     MemSummaryReporter rpt(baseline, output, scale);
     rpt.report();

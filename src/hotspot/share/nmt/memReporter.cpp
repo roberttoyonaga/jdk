@@ -174,8 +174,8 @@ void MemSummaryReporter::report() {
                   current_scale(), _malloc_snapshot->total_peak_count());
     out->print("mmap:   ");
     print_total(total_mmap_reserved_bytes, total_mmap_committed_bytes);
-    out->cr();
     if (_rss_snapshot.is_valid()) {
+      out->cr();
       out->print("process-wide RSS:   ");
       out->print("%zu%s", amount_in_current_scale(_rss_snapshot.total_rss() /*+ total_malloced_bytes*/), current_scale());
     }
