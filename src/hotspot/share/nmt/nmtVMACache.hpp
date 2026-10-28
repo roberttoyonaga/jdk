@@ -50,7 +50,7 @@ class CachedNMTInformation : public VirtualMemoryWalker {
   Range* _ranges;
   MemTag* _mem_tags;
   size_t _count, _capacity;
-  mutable size_t _last;//** consider renaming this
+  mutable size_t _last;
 
 public:
 
@@ -80,7 +80,7 @@ public:
     result.count = 0;
 
     if (_count <= _last) {
-      // Precaution for sanity
+      assert(_last < _count || _count == 0, "Last count should be smaller than NMT cache size.");
       return result;
     }
 
@@ -94,10 +94,8 @@ public:
         continue;
       }
       if (to <= _ranges[i].from) {
-        // *** stopping condition. We've hit the end of this VMA, time to parse the next line
         break;
       }
-      // *** intersection
       if (result.count < max_intersections) {
         result.intersections[result.count].from = MAX2(from, _ranges[i].from);
         result.intersections[result.count].to = MIN2(to, _ranges[i].to);

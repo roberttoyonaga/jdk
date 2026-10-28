@@ -111,7 +111,6 @@ class MemReporterBase : public StackObj {
   void print_malloc(const MemoryCounter* c, MemTag mem_tag) const;
   void print_virtual_memory(size_t reserved, size_t committed, size_t peak) const;
   void print_arena(const MemoryCounter* c) const;
-  void print_rss(size_t rss) const;
 
   void print_virtual_memory_region(const char* type, address base, size_t size) const;
 };
@@ -128,7 +127,7 @@ class MemSummaryReporter : public MemReporterBase {
   size_t                  _array_class_count;
 
  public:
-  // This constructor is for normal reporting from a recent baseline._array_class_count;
+  // This constructor is for normal reporting from a recent baseline.
   MemSummaryReporter(MemBaseline& baseline, NMTRssSnapshot& rssSnapshot, outputStream* output,
     size_t scale = default_scale) : MemReporterBase(output, scale),
     _malloc_snapshot(baseline.malloc_memory_snapshot()),

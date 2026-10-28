@@ -57,32 +57,18 @@ void NMTRssSnapshot::collect() {
       // No NMT regions match this VMA. That's possible and okay.
       continue;
     }
-    // Count RSS only for VMAs NMT is tracking.
-    //_total_rss += info.rss;
 
     size_t vma_size = pointer_delta(info.to, info.from, 1);
-    if (result.count == 1) {
-      size_t nmt_region_size = pointer_delta(result.intersections[0].to, result.intersections[0].from, 1);
-      // nmt_region_size is already clamped to the VMA size.
-      // Possible overflow risk if regions are very large.
-      _rss_by_tag[NMTUtil::tag_to_index(result.intersections[0].tag)] += info.rss * nmt_region_size / vma_size;
-      // Only count RSS corresponding to an NMT region.
-      //_total_rss += info.rss * nmt_region_size / vma_size;
-      continue;
-    }
 
-    // The kernel has clumped multiple adjacent regions with identical protections together.
+    // The kernel may have clumped multiple adjacent regions with identical protections together.
     // Distribute RSS proportionally.
     for (int i = 0; i < result.count; i++) {
       size_t nmt_region_size = pointer_delta(result.intersections[i].to, result.intersections[i].from, 1);
+      // nmt_region_size is already clamped to the VMA size.
       // Possible overflow risk if regions are very large.
       _rss_by_tag[NMTUtil::tag_to_index(result.intersections[i].tag)] += info.rss * nmt_region_size / vma_size;
-      // Only count RSS corresponding to an NMT region.
-      //_total_rss += info.rss * nmt_region_size / vma_size;
     }
   }
-
   ::fclose(f);
   _is_valid = true;
-  return;
 }

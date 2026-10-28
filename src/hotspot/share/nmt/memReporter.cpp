@@ -137,12 +137,6 @@ void MemReporterBase::print_arena(const MemoryCounter* c) const {
   }
 }
 
-void MemReporterBase::print_rss(size_t rss) const {//*** its good to follow convention, but do we need a whole fn for this?
-  outputStream* out = output();
-  const char* scale = current_scale();
-  out->print("(rss=%zu%s)", amount_in_current_scale(rss), scale);
-}
-
 void MemReporterBase::print_virtual_memory_region(const char* type, address base, size_t size) const {
   const char* scale = current_scale();
   output()->print("[" PTR_FORMAT " - " PTR_FORMAT "] %s %zu%s",
@@ -291,7 +285,7 @@ void MemSummaryReporter::report_summary_of_tag(MemTag mem_tag,
     }
 
     if (amount_in_current_scale(rss) > 0) {
-      print_rss(rss);
+      out->print("(rss=%zu%s)", amount_in_current_scale(rss), current_scale());
       out->cr();
     }
   }
